@@ -76,14 +76,10 @@ class Dictionary(object):
             self.tokenizer = BertTokenizer.from_pretrained(bert_model_name)
             self.word2idx = self.tokenizer.vocab
             self.idx2word = list(self.tokenizer.vocab.keys())
-            self.padding_idx = self.tokenizer.pad_token_id
+            self.padding_idx = self.tokenizer.convert_tokens_to_ids(['[PAD]'])[0]
 
     @property
     def ntoken(self):
-        return len(self.word2idx)
-
-    @property
-    def padding_idx(self):
         return len(self.word2idx)
 
     def tokenize(self, sentence, add_word):
@@ -115,13 +111,13 @@ class Dictionary(object):
     def load_from_file(cls, path):
         print('loading BERT tokenizer dictionary from %s' % path)
         word2idx, idx2word = cPickle.load(open(path, 'rb'))
-        d = cls(word2idx, idx2word)
+        d = cls(word2idx = word2idx, idx2word = idx2word)
         return d
 
     @classmethod
     def load_from_model_name(cls, model_name: str):
         print('loading BERT tokenizer dictionary from %s' % model_name)
-        d = cls(model_name)
+        d = cls(bert_model_name=model_name)
         return d
 
     def add_word(self, word):
@@ -441,7 +437,7 @@ if __name__ == '__main__':
     dataroot = './data_rad'
 
     # d = Dictionary.load_from_file(os.path.join(dataroot,'dictionary.pkl'))
-    d = Dictionary.load_from_model_name('bert-base-uncased')
+    d = Dictionary.load_from_model_name(model_name = 'bert-base-uncased')
     dataset = VQARADFeatureDataset('train', cfg, d, dataroot)
     train_data = DataLoader(dataset,
                             batch_size=20,
