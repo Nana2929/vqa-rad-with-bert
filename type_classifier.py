@@ -16,15 +16,13 @@ import torch.nn as nn
 import os
 from torch.utils.data import DataLoader
 from lib.utils.create_dictionary import Dictionary
-from lib.language.language_model import BERTWordEmbedding, QuestionEmbedding
 import argparse
-from torch.nn.init import kaiming_uniform_, xavier_uniform_
 import torch.nn.functional as F
 from datetime import datetime
 from lib.utils import utils
 from lib.language.classify_question import classify_model
 
-# set  TOKENIZERS_PARALLELISM=(true | false) 
+# set  TOKENIZERS_PARALLELISM=(true | false)
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 BERT_MODEL_NAME = 'bert-base-uncased'
 BATCH_SIZE = 8
@@ -98,12 +96,12 @@ if __name__=='__main__':
     val_data = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2, pin_memory=True, drop_last=False)
 
     # net = classify_model(d.ntoken, os.path.join(dataroot, 'glove6b_init_300d.npy'))
-    # TODO: 改成用 BERT embedding 訓練 (DONE 2023/06/02) 
+    # TODO: 改成用 BERT embedding 訓練 (DONE 2023/06/02)
     net = classify_model(bert_model_name=BERT_MODEL_NAME,
                          in_dim=768)
     # fix
     net = net.to(device)
-   
+
     run_timestamp = datetime.now().strftime("%Y%b%d-%H%M%S")
     ckpt_path = os.path.join('./log', run_timestamp)
     utils.create_dir(ckpt_path)
