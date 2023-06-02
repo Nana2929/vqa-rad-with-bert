@@ -23,6 +23,7 @@ import h5py
 import clip
 import torch
 import sys
+from transformers import AutoTokenizer, AutoModel
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils import utils
@@ -114,8 +115,13 @@ def _load_dataset(dataroot, name, img_id2val, label2ans):
 
 class VQARADFeatureDataset(Dataset):
 
-    def __init__(self, name, cfg, dictionary, dataroot='data'):
+    def __init__(self, name, cfg, dictionary, dataroot='data', q_emb_model="bert-base-uncased"):
         super(VQARADFeatureDataset, self).__init__()
+        
+        # question
+        self.q_emb_model = q_emb_model
+        self.q_tokenizer = AutoTokenizer.from_pretrained(self.q_emb_model)
+        
         question_len = cfg.TRAIN.QUESTION.LENGTH
         self.cfg = cfg
         self.name = name
@@ -193,6 +199,48 @@ class VQARADFeatureDataset(Dataset):
             utils.assert_ge(min(tokens), 0)
             entry['q_token'] = tokens
 
+        """
+        
+        
+        bert <- input_ids, token_type_ids, attention_mask 
+                input_ids: (batch, seq_len)
+                token_type_ids: (batch, seq_len)
+                attention_mask: (batch, seq_len)
+                
+        collate_fn:
+            batch = {
+                # q needs to be separated into these 3 elements 
+                input_ids: (batch, seq_len),
+                token_type_ids: (batch, seq_len),
+                attention_mask: (batch, seq_len),
+                v: (???),
+                answer_type: (???),
+                ... any v needed
+            }
+ 
+        bert_model(**batch)
+ 
+        """
+    # def bert_tokenize(self, max_length):
+    #     """Tokenizes the questions.
+
+    #     This will add q_token in each entry of the dataset.
+    #     -1 represent nil, and should be treated as padding_idx in embedding
+    #     TODO Revision: should be turned to 0 for padding_idx in embedding
+    #     """
+
+    #     for entry in self.entries:
+            
+    #         question = entry['question']
+    #         encode = self.q_tokenizer(question,
+    #                                   max_length=max_length, 
+    #                                   pad_to_max_length=True,
+    #                                   truncation=True,
+    #                                   )
+            
+    #         utils.assert_eq(len(encode['input_ids']), max_length)
+    #         entry['q_token'] = encode
+
     def tensorize(self):
         if self.cfg.TRAIN.VISION.MAML:
             self.maml_images_data = torch.from_numpy(self.maml_images_data)
@@ -221,7 +269,7 @@ class VQARADFeatureDataset(Dataset):
 
     def __getitem__(self, index):
         entry = self.entries[index]
-        question_data = [0]
+
         answer = entry['answer']
         type = answer['type']
         answer_type = entry['answer_type']
@@ -241,7 +289,10 @@ class VQARADFeatureDataset(Dataset):
                 clip_images_data = self.clip_images_data[entry['image']].reshape(3 * 250 * 250)
             image_data[2] = clip_images_data
 
-        question_data[0] = entry['q_token']
+
+        # question_data=[entry['q_token']]
+        question_data = entry["question"] # str
+        
         if answer_type == 'CLOSED':
             answer_target = 0
         else:
@@ -276,6 +327,10 @@ class VQARADFeatureDataset(Dataset):
 
     def __len__(self):
         return len(self.entries)
+
+
+    def collate_fn(batch):
+        ...
 
 
 def tfidf_from_questions(names, args, dictionary, dataroot='data', target=['rad']):
