@@ -8,60 +8,42 @@
 # Date:         2020/4/7
 #-------------------------------------------------------------------------------
 
+from typing import List
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import numpy as np
-from pytorch_pretrained_bert import BertTokenizer, BertModel, BertForMaskedLM
+from transformers import AutoModel, AutoTokenizer, AutoConfig
 
 
 class BERTWordEmbedding(nn.Module):
     """BERT Word Embedding
     """
 
-    def __init__(self, bert_model_name, dropout=0.5):
+    def __init__(self, bert_model_name, dropout=0.5, max_length=20):
         super(BERTWordEmbedding, self).__init__()
-        tokenizer = BertTokenizer.from_pretrained(bert_model_name)
-        model = BertModel.from_pretrained(bert_model_name)
-        self.tokenizer = tokenizer
-        self.model = model
-        self.vocab_size = model.embeddings.word_embeddings.weight.size()[0]
-        self.emb_dim = model.embeddings.word_embeddings.weight.size()[1]
+
+        self.tokenizer =  AutoTokenizer.from_pretrained(bert_model_name)
+        self.config = AutoConfig.from_pretrained(bert_model_name)
+        self.model = AutoModel.from_pretrained(bert_model_name, config=self.config)
+
+        self.max_length = max_length
+        self.output_layer = nn.Linear(self.config.hidden_size, 1024)
+        self.vocab_size = self.config.vocab_size
+        self.emb_dim = self.config.hidden_size
+
         self.emb = nn.Embedding(self.vocab_size + 1,
                                 self.emb_dim,
                                 padding_idx=self.find_padding_idx())
         self.emb.weight.requires_grad = True # fixed
-        # TODO: debug, why dropout_ attribute is not accessed? 
-        self.dropout_ = nn.Dropout(p=dropout)
-        print('BERTWordEmbedding Attribute:', self.__dict__.keys())
-        # if cat:
-        #     self.emb_ = nn.Embedding(self.vocab_size+1, self.emb_dim,
-        #                              padding_idx=self.ntoken)
-        #     self.emb_.weight.requires_grad = False # fixed
+        # TODO: debug, why dropout_ attribute is not accessed?
+        # print('BERTWordEmbedding Attribute:', self.__dict__.keys())
 
     def find_padding_idx(self):
         pad_id = self.tokenizer.convert_tokens_to_ids(['[PAD]'])[0]
         return pad_id
 
-    def init_bert_embedding(self):
-        # only use 1st layer
-        embedding_mat = self.model.embeddings.word_embeddings.weight.data
-        self.emb.weight.data[:self.vocab_size] = embedding_mat
-
-    # for first layer (embedding layer) only
-    def is_embed_trainable(self):
-        return self.emb.weight.requires_grad
-
-    def train_embedding(self, trainable):
-        self.emb.weight.requires_grad = trainable
-
-    # for use of other layers
-    def train_all(self):
-        self.model.train()
-
-    def is_bert_trainable(self):
-        return self.model.requires_grad
-
+    # Archive
     def _prepare_last_4(self, x: str):
         """
         x: a string/question
@@ -96,6 +78,14 @@ class BERTWordEmbedding(nn.Module):
         #     emb = torch.cat((emb, self.emb_(x)), 2)
         # emb = self.dropout_(emb)
         return emb
+
+    # Archived
+    # def forward_sum4(self, x: str):
+    #     outs = []
+    #     for i, q in enumerate(x):
+    #         outs[i] = self._prepare_last_4(q)
+    #     outs = torch.stack(outs, dim=0)
+    #     return outs
 
     def fully_forward(self, input_ids, token_type_ids=None, attention_mask=None, **kwargs):
         # (batch_size, seq_len, 1024)
