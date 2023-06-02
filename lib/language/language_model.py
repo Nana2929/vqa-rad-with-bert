@@ -97,14 +97,38 @@ class BERTWordEmbedding(nn.Module):
         # emb = self.dropout_(emb)
         return emb
 
-    # TODO: check output shape: (batch_size, seq_len, emb_dim)
-    def forward_sum4(self, x: str):
-        outs = []
-        for i, q in enumerate(x):
-            outs[i] = self._prepare_last_4(q)
-        outs = torch.stack(outs, dim=0)
-        return outs
+    def fully_forward(self, input_ids, token_type_ids=None, attention_mask=None, **kwargs):
+        # (batch_size, seq_len, 1024)
+        return self.output_layer(self.model(input_ids, token_type_ids, attention_mask))
 
+    def encode_and_cast_dim_forward(self, questions:List[str]):
+        # (batch_size, seq_len, 1024)
+        # 1024: HID_DIM
+        return  self.output_layer(self.encode_and_forward(questions)) # (batch_size, seq_len, 1024)  as type attention
+
+    def type_attn_forward(self, questions:List[str]):
+        # for TypeAttention
+        # (batch_size, 1024)
+        # 1024: HID_DIM
+        return torch.sum(self.encode_and_cast_dim_forward(questions), dim=1).squeeze()
+
+    def encode_and_forward(self, questions:List[str]):
+        # use last layer output as embedding
+        # (batch_size, seq_len, 768)
+
+        device = next(self.model.parameters()).device
+        encode = self.tokenizer.batch_encode_plus(questions,
+                                                  return_tensors="pt",
+                                                  max_length=self.max_length,
+                                                  truncation=True,
+                                                  padding='max_length'
+                                                  )
+
+        encode = {k: v.to(device) for k, v in encode.items()}
+        # https://huggingface.co/docs/transformers/v4.29.1/en/main_classes/output#transformers.modeling_outputs.BaseModelOutputWithPoolingAndCrossAttentions
+        logit = self.model(**encode).last_hidden_state # (batch_size, seq_len, 768)
+
+        return logit
 
 class WordEmbedding(nn.Module):
     """Word Embedding
