@@ -5,11 +5,15 @@ SEED: 88
 
 DATASET:
   DATASET: "RAD"
-  DATA_DIR: "/home/nanaeilish/projects/mis/vqa-rad-with-bert/data_rad"
+  DATA_DIR: "./data_rad"
   DATA_TYPE: 'jpg'
+  EMBEDDER_MODEL: 'bert-base-uncased'
+  EMB_DIM: 768 
 
 LOSS:
   LOSS_TYPE: 'BCELogits'
+
+
 
 TRAIN:
   BATCH_SIZE: 16
@@ -42,7 +46,7 @@ TRAIN:
     AE_ALPHA: 0.001
     MAML: False
     CLIP: True
-    CLIP_PATH: "/home/nanaeilish/projects/mis/PubMedCLIP/PubMedCLIP_RN50.pth"
+    CLIP_PATH: "/home/nanaeilish/projects/mis/Medical-VQA/PubMedCLIP_RN50.pth"
     CLIP_VISION_ENCODER: "RN50"
     OTHER_MODEL: False
 
