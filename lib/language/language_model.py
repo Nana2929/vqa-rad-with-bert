@@ -15,12 +15,11 @@ import numpy as np
 from pytorch_pretrained_bert import BertTokenizer, BertModel, BertForMaskedLM
 
 
-
-
 class BERTWordEmbedding(nn.Module):
     """BERT Word Embedding
     """
-    def __init__(self, bert_model_name, dropout):
+
+    def __init__(self, bert_model_name, dropout=0.5):
         super(BERTWordEmbedding, self).__init__()
         tokenizer = BertTokenizer.from_pretrained(bert_model_name)
         model = BertModel.from_pretrained(bert_model_name)
@@ -29,16 +28,14 @@ class BERTWordEmbedding(nn.Module):
         self.vocab_size = model.embeddings.word_embeddings.weight.size()[0]
         self.emb_dim = model.embeddings.word_embeddings.weight.size()[1]
 
-        self.emb = nn.Embedding(self.vocab_size+1, self.emb_dim,
+        self.emb = nn.Embedding(self.vocab_size + 1,
+                                self.emb_dim,
                                 padding_idx=self.find_padding_idx())
+        self.dropout = nn.Dropout(p=dropout)
         # if cat:
         #     self.emb_ = nn.Embedding(self.vocab_size+1, self.emb_dim,
         #                              padding_idx=self.ntoken)
         #     self.emb_.weight.requires_grad = False # fixed
-
-        self.dropout = nn.Dropout(dropout)
-
-
 
     def find_padding_idx(self):
         pad_id = self.tokenizer.convert_tokens_to_ids(['[PAD]'])[0]
@@ -62,7 +59,6 @@ class BERTWordEmbedding(nn.Module):
 
     def is_bert_trainable(self):
         return self.model.requires_grad
-
 
     def _prepare_last_4(self, x: str):
         """
@@ -107,20 +103,20 @@ class BERTWordEmbedding(nn.Module):
         return outs
 
 
-
 class WordEmbedding(nn.Module):
     """Word Embedding
 
     The ntoken-th dim is used for padding_idx, which agrees *implicitly*
     with the definition in Dictionary.
     """
+
     def __init__(self, ntoken, emb_dim, dropout, cat=True):
         super(WordEmbedding, self).__init__()
         self.cat = cat
-        self.emb = nn.Embedding(ntoken+1, emb_dim, padding_idx=ntoken)
+        self.emb = nn.Embedding(ntoken + 1, emb_dim, padding_idx=ntoken)
         if cat:
-            self.emb_ = nn.Embedding(ntoken+1, emb_dim, padding_idx=ntoken)
-            self.emb_.weight.requires_grad = False # fixed
+            self.emb_ = nn.Embedding(ntoken + 1, emb_dim, padding_idx=ntoken)
+            self.emb_.weight.requires_grad = False  # fixed
         self.dropout = nn.Dropout(dropout)
         self.ntoken = ntoken
         self.emb_dim = emb_dim
@@ -134,7 +130,7 @@ class WordEmbedding(nn.Module):
         if tfidf is not None:
             if 0 < tfidf_weights.size:
                 weight_init = torch.cat([weight_init, torch.from_numpy(tfidf_weights)], 0)
-            weight_init = tfidf.matmul(weight_init) # (N x N') x (N', F)
+            weight_init = tfidf.matmul(weight_init)  # (N x N') x (N', F)
             self.emb_.weight.requires_grad = True
         if self.cat:
             self.emb_.weight.data[:self.ntoken] = weight_init.clone()
@@ -143,13 +139,12 @@ class WordEmbedding(nn.Module):
         emb = self.emb(x)
         if self.cat:
             emb = torch.cat((emb, self.emb_(x)), 2)
-        emb = self.dropout(emb) # output shape: (batch_size, seq_len, emb_dim)
+        emb = self.dropout(emb)  # output shape: (batch_size, seq_len, emb_dim)
         return emb
 
 
-
-
 class QuestionEmbedding(nn.Module):
+
     def __init__(self, in_dim, num_hid, nlayers, bidirect, dropout, rnn_type='GRU'):
         """Module for question embedding
         """
@@ -157,18 +152,18 @@ class QuestionEmbedding(nn.Module):
         assert rnn_type == 'LSTM' or rnn_type == 'GRU'
         rnn_cls = nn.LSTM if rnn_type == 'LSTM' else nn.GRU if rnn_type == 'GRU' else None
 
-        self.rnn = rnn_cls(
-            in_dim, num_hid, nlayers,
-            bidirectional=bidirect,
-            dropout=dropout,
-            batch_first=True)
+        self.rnn = rnn_cls(in_dim,
+                           num_hid,
+                           nlayers,
+                           bidirectional=bidirect,
+                           dropout=dropout,
+                           batch_first=True)
 
         self.in_dim = in_dim
         self.num_hid = num_hid
         self.nlayers = nlayers
         self.rnn_type = rnn_type
         self.ndirections = 1 + int(bidirect)
-
 
     def init_hidden(self, batch):
         # just to get the type of tensor
@@ -177,7 +172,7 @@ class QuestionEmbedding(nn.Module):
         if self.rnn_type == 'LSTM':
             return (Variable(weight.new(*hid_shape).zero_()),
                     Variable(weight.new(*hid_shape).zero_()))
-        else: # GRU
+        else:  # GRU
             return Variable(weight.new(*hid_shape).zero_())
 
     def forward(self, x):
@@ -188,7 +183,6 @@ class QuestionEmbedding(nn.Module):
         # For unbatched 2-D input, hx should also be 2-D but got 3-D tensor
 
         output, hidden = self.rnn(x, hidden)
-
 
         if self.ndirections == 1:
             return output[:, -1]

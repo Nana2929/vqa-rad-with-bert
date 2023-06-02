@@ -94,6 +94,10 @@ class Dictionary(object):
     def __len__(self):
         return len(self.idx2word)
 
+def create_bert_dictionary(bert_model_name: str):
+    return Dictionary.load_from_model_name(bert_model_name)
+
+
 
 def create_dictionary(dataroot, dataset_name, train_file, test_file):
     dictionary = Dictionary()
@@ -135,8 +139,8 @@ def create_glove_embedding_init(idx2word, glove_file):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="Med VQA")
-    parser.add_argument("inputpath", type=str, help="Path to input data")
-    parser.add_argument("--dataset", type=str, help="Name of the dataset", default="slake")
+    parser.add_argument("--inputpath", type=str, help="./data_rad")
+    parser.add_argument("--dataset", type=str, help="Name of the dataset", default="rad")
     parser.add_argument("--trainfile", type=str, help="Name of the train file", default="train.json")
     parser.add_argument("--testfile", type=str, help="Name of the test file", default="test.json")
     args = parser.parse_args()
@@ -144,13 +148,14 @@ if __name__ == '__main__':
     dataset = args.dataset
     train_file = args.trainfile
     test_file = args.testfile
-    d = create_dictionary(data, dataset, train_file, test_file)
+    d = create_bert_dictionary('bert-base-uncased')
     d.dump_to_file(data + '/dictionary.pkl')
 
     d = Dictionary.load_from_file(data + '/dictionary.pkl')
-    emb_dim = 300
+    print("dictionary size: {}".format(len(d)))
+    # emb_dim = 300
 
-    glove_file = f'/home/nanaeilish/glove/glove.6B.{emb_dim}d.txt'
-    weights, word2emb = create_glove_embedding_init(d.idx2word, glove_file)
-    np.save(data + '/glove6b_init_%dd.npy' % emb_dim, weights)
-    print("Process finished successfully!")
+    # glove_file = f'/home/nanaeilish/glove/glove.6B.{emb_dim}d.txt'
+    # weights, word2emb = create_glove_embedding_init(d.idx2word, glove_file)
+    # np.save(data + '/glove6b_init_%dd.npy' % emb_dim, weights)
+
