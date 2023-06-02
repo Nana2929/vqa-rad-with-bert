@@ -8,7 +8,7 @@ DATASET:
   DATA_DIR: "./data_rad"
   DATA_TYPE: 'jpg'
   EMBEDDER_MODEL: 'bert-base-uncased'
-  EMB_DIM: 768 
+  EMB_DIM: 768
 
 LOSS:
   LOSS_TYPE: 'BCELogits'
@@ -30,13 +30,13 @@ TRAIN:
   DROPOUT: 0.5
   ATTENTION:
     MODE: 'BAN'
-    GLIMPSE: 10
+    GLIMPSE: 10  # Attn heads
     USE_COUNTER: False
-    NUM_STACKS: 2    ## For SAN
+    NUM_STACKS: 2    # For SAN
   QUESTION:
     RNN: 'GRU'
-    LENGTH: 12
-    TFIDF: True
+    LENGTH: 20
+    TFIDF: False
     CAT: True
     HID_DIM: 1024   ## Dim of joint semantic features
   VISION:
