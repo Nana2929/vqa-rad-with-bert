@@ -8,12 +8,10 @@ DATASET:
   DATA_DIR: "./data_rad"
   DATA_TYPE: 'jpg'
   EMBEDDER_MODEL: 'bert-base-uncased'
-  EMB_DIM: 768 
+  EMB_DIM: 768
 
 LOSS:
   LOSS_TYPE: 'BCELogits'
-
-
 
 TRAIN:
   BATCH_SIZE: 16
@@ -23,8 +21,8 @@ TRAIN:
   INPUT_SNAPSHOT: ""
   OPTIMIZER:
     TYPE: 'ADAMX'
-    BASE_LR: 1e-3
-    MOMENTUM_CNN: 0.05
+    BASE_LR: 1e-5 # 嗷嗷嗷嗷嗷嗷嗷
+    MOMENTUM_CNN: 0.05  
     EPS_CNN: 1e-5
   ACTIVATION: 'relu'
   DROPOUT: 0.5

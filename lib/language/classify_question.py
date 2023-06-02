@@ -98,9 +98,12 @@ class typeAttention(nn.Module):
 
     def forward(self, question):
         question = question[0]
-        w_emb = self.w_emb(question)
-        q_emb = self.q_emb.forward_all(w_emb)  # [batch, q_len, q_dim]
-        q_final = self.q_final(w_emb, q_emb)   # b, 1024
+        # w_emb = self.w_emb(question)
+        # q_emb = self.q_emb.forward_all(w_emb)  # [batch, q_len, q_dim]
+        # q_final = self.q_final(w_emb, q_emb)   # b, 1024
+
+        q_final = self.w_emb
+
 
         x_f = self.f_fc1(q_final)
         x_f = F.relu(x_f)
