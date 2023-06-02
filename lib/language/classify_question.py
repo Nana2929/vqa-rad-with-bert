@@ -8,6 +8,7 @@
 #-------------------------------------------------------------------------------
 
 
+from typing import List
 import torch
 from dataset import *
 import torch.nn as nn
@@ -111,6 +112,7 @@ class typeAttention(nn.Module):
 
         return x_f
 
+
 # TODO
 class classify_model(nn.Module):
     def __init__(self, bert_model_name: str,
@@ -120,36 +122,26 @@ class classify_model(nn.Module):
         # self.w_emb = WordEmbedding(size_question,300, 0.0, False)
         # self.w_emb.init_embedding(path_init)
         # self.q_emb = QuestionEmbedding(300, 1024 , 1, False, 0.0, 'GRU')
-        self.w_emb = BERTWordEmbedding(
+        self.q_emb = BERTWordEmbedding(
             bert_model_name = bert_model_name)
-        self.w_emb.init_bert_embedding()
-        self.q_emb = QuestionEmbedding(self.w_emb.emb_dim,
-                                       1024 , 1, False, 0.0, 'GRU')
-        self.q_final = QuestionAttention(
-            in_dim = in_dim,
-            dim = 1024)
-        self.f_fc1 = linear(1024, 256)
-        self.f_fc2 = linear(256,64)
-        self.f_fc3 = linear(64,2) # OPEN, CLOSE classifier
+        
+        self.classifier = nn.Sequential(
+            nn.Linear(self.q_emb.config.hidden_size, 256),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(256, 64),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(64, 2)
+        )
+        
+        # self.f_fc1 = linear(in_dim, 256)
+        # self.f_fc2 = linear(256,64)
+        # self.f_fc3 = linear(64,2) # OPEN, CLOSE classifier
 
-    def forward(self,question):
-        question = question[0] # [CLS]
-
-        w_emb = self.w_emb(question) # glove init embeddings
-        q_emb = self.q_emb.forward_all(w_emb)  # RNN forwarded output # [batch, q_len, q_dim]
-        # mat1 and mat2 cannot be multiplied error: 96x1792 and 1324x1024
-        q_final = self.q_final(w_emb, q_emb) #b, 1024 # caculate attention for these 2
-
-        q_final = self.q_emb(w_emb)
-        x_f = self.f_fc1(q_final)
-        x_f = F.relu(x_f)
-        x_f = self.f_fc2(x_f)
-        x_f = F.dropout(x_f)
-        x_f = F.relu(x_f)
-        x_f = self.f_fc3(x_f)
-
-        return x_f
-
+    def forward(self,question: List[str]):
+        logits = self.q_emb.encode_and_forward(question)
+        return self.classifier(logits[:,0,:])
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Med VQA over MAC")
