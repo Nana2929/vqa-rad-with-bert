@@ -22,25 +22,29 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 class Dictionary(object):
-    def __init__(self,
-                 bert_model_name,
-                 word2idx=None, idx2word=None):
-        if bert_model_name is not None:
-            self.tokenizer = BertTokenizer.from_pretrained(bert_model_name)
-            self.word2idx = self.tokenizer.vocab
-            self.idx2word = self.tokenizer.ids_to_tokens
+    """Revised by Ching Wen Yang, 2023/06/02
+    """
 
-        else:
+    def __init__(self, word2idx=None, idx2word=None, bert_model_name: str = None):
+
+
+        # load tokenizer
+        if bert_model_name is not None:
+            self.bert_model_name = bert_model_name
+            self.tokenizer = BertTokenizer.from_pretrained(bert_model_name)
+            # growing dictionary
+            self.word2idx = self.tokenizer.vocab
+            self.idx2word = list(self.tokenizer.vocab.keys())
+            self.padding_idx = self.tokenizer.convert_tokens_to_ids(['[PAD]'])[0]
+
+        elif word2idx and idx2word:
             self.word2idx = word2idx
             self.idx2word = idx2word
+            self.padding_idx = len(self.idx2word)
 
     @property
     def ntoken(self):
-        return len(self.word2idx) # vocab_size
-
-    @property
-    def padding_idx(self):
-        return self.tokenizer.convert_tokens_to_ids(['[PAD]'])[0] if self.tokenizer is not None else self.ntoken
+        return len(self.word2idx)
 
     def tokenize(self, sentence, add_word):
         sentence = sentence.lower()
@@ -50,7 +54,8 @@ class Dictionary(object):
             sentence = sentence.replace("? -open", "")
         if "? - open" in sentence:
             sentence = sentence.replace("? - open", "")
-        sentence = sentence.replace(',', '').replace('?', '').replace('\'s', ' \'s').replace('...', '').replace('x ray', 'x-ray').replace('.', '')
+        sentence = sentence.replace(',', '').replace('?', '').replace('\'s', ' \'s').replace(
+            '...', '').replace('x ray', 'x-ray').replace('.', '')
         words = sentence.split()
         tokens = []
         if add_word:
@@ -59,23 +64,25 @@ class Dictionary(object):
         else:
             for w in words:
                 # if a word is not in dictionary, it will be replaced with the last word of dictionary.
-                tokens.append(self.word2idx.get(w, self.padding_idx-1))
+                tokens.append(self.word2idx.get(w, len(self.word2idx) - 1))
+
         return tokens
 
     def dump_to_file(self, path):
         cPickle.dump([self.word2idx, self.idx2word], open(path, 'wb'))
-        print('dictionary dumped to %s' % path)
+        print(f'tokenizer dictionary dumped to %s' % path)
 
     @classmethod
     def load_from_file(cls, path):
-        print('loading dictionary from %s' % path)
+        print('loading tokenizer dictionary from %s' % path)
         word2idx, idx2word = cPickle.load(open(path, 'rb'))
-        d = cls(word2idx, idx2word)
+        d = cls(word2idx=word2idx, idx2word=idx2word)
         return d
 
     @classmethod
-    def load_from_bert(cls, bert_model_name):
-        d = cls(bert_model_name)
+    def load_from_model_name(cls, model_name: str):
+        print('loading BERT tokenizer dictionary from %s' % model_name)
+        d = cls(bert_model_name=model_name)
         return d
 
     def add_word(self, word):
