@@ -27,11 +27,13 @@ class BERTWordEmbedding(nn.Module):
         self.model = model
         self.vocab_size = model.embeddings.word_embeddings.weight.size()[0]
         self.emb_dim = model.embeddings.word_embeddings.weight.size()[1]
-
         self.emb = nn.Embedding(self.vocab_size + 1,
                                 self.emb_dim,
                                 padding_idx=self.find_padding_idx())
-        self.dropout = nn.Dropout(p=dropout)
+        self.emb.weight.requires_grad = True # fixed
+        # TODO: debug, why dropout_ attribute is not accessed? 
+        self.dropout_ = nn.Dropout(p=dropout)
+        print('BERTWordEmbedding Attribute:', self.__dict__.keys())
         # if cat:
         #     self.emb_ = nn.Embedding(self.vocab_size+1, self.emb_dim,
         #                              padding_idx=self.ntoken)
@@ -88,10 +90,11 @@ class BERTWordEmbedding(nn.Module):
 
     # TODO: check output shape: (batch_size, seq_len, emb_dim)
     def forward(self, x: str):
+        self.train()
         emb = self.emb(x)
         # if self.cat:
         #     emb = torch.cat((emb, self.emb_(x)), 2)
-        emb = self.dropout(emb)
+        # emb = self.dropout_(emb)
         return emb
 
     # TODO: check output shape: (batch_size, seq_len, emb_dim)

@@ -21,15 +21,16 @@ import torch.nn.functional as F
 # from torch import string_classes
 from torch.utils.data.dataloader import default_collate
 import logging
-from utils.create_dictionary import Dictionary
 import itertools
 import _pickle as cPickle
 import json
 import pandas as pd
-from language import language_model
+from pytorch_pretrained_bert import BertModel
 
 import sys
-sys.path.append('/home/nanaeilish/projects/mis/PubMedCLIP/QCR_PubMedCLIP/lib/language')
+sys.path.append('./lib')
+from language import language_model
+from utils.create_dictionary import Dictionary
 
 EPS = 1e-7
 numpy_type_map = {
@@ -170,7 +171,7 @@ def trim_collate(batch):
         return [trim_collate(samples) for samples in transposed]
 
     raise TypeError((error_msg.format(type(batch[0]))))
-
+# TODO:
 def create_glove_embedding_init(idx2word, glove_file):
     word2emb = {}
     # glove_file = glove_file if args.use_TDIUC else os.path.join(args.TDIUC_dir, 'glove', glove_file.split('/')[-1])
@@ -190,6 +191,28 @@ def create_glove_embedding_init(idx2word, glove_file):
             continue
         weights[idx] = word2emb[word]
     return weights, word2emb
+
+
+def create_bert_embedding_init(d, bert_model_name):
+    # d: dictionary class in create_dictionary
+    word2emb = {}
+    weights = np.zeros((len(d), 768), dtype=np.float32)
+    bert_model = BertModel.from_pretrained(bert_model_name)
+    embed = bert_model.embeddings.word_embeddings.weight.data
+    for idx, word in enumerate(d.idx2word):
+        if word not in word2emb:
+            continue
+        weights[idx] = embed[idx]
+    return weights, word2emb
+
+
+
+
+
+
+
+
+
 
 # --------------------FAIRSEQ functions---------------------------
 def move_to_cuda(sample):
@@ -270,7 +293,8 @@ def tfidf_loading(use_tfidf, w_emb, cfg):
                 print("Embedding tfidf and weights haven't been saving before")
                 # tfidf, weights = tfidf_from_questions(['train'], args, dict)
                 tfidf, weights = tfidf_from_questions(['train', 'test'], cfg, dict)
-                w_emb.init_embedding(os.path.join(data_dir, 'glove6b_init_300d.npy'), tfidf, weights)
+                # w_emb.init_embedding(os.path.join(data_dir, 'glove6b_init_300d.npy'), tfidf, weights)
+                w_emb.init_bert_embedding() 
                 with open(os.path.join(data_dir ,'embed_tfidf_weights.pkl'), 'wb') as f:
                     torch.save(w_emb, f)
                 print("Saving embedding with tfidf and weights successfully")
@@ -336,11 +360,15 @@ def tfidf_from_questions(names, cfg, dictionary):
 
     tfidf = torch.sparse.FloatTensor(torch.LongTensor(inds), torch.FloatTensor(vals))
     tfidf = tfidf.coalesce()
+    # TODO: BERT embeddings
+    emb_dim = 768
+    weights, word2emb = create_bert_embedding_init(dictionary, cfg.DATASET.EMBEDDER_MODEL)
+    print('tf-idf stochastic matrix (%d x %d) is generated from BERT.' % (tfidf.size(0), tfidf.size(1)))
 
     # Latent word embeddings
-    emb_dim = 300
-    glove_file = os.path.join('./data', 'glove.6B', 'glove.6B.%dd.txt' % emb_dim)
-    weights, word2emb = create_glove_embedding_init(dictionary.idx2word[N:], glove_file)
-    print('tf-idf stochastic matrix (%d x %d) is generated.' % (tfidf.size(0), tfidf.size(1)))
+    # emb_dim = 300
+    # glove_file = os.path.join('./data', 'glove.6B', 'glove.6B.%dd.txt' % emb_dim)
+    # weights, word2emb = create_glove_embedding_init(dictionary.idx2word[N:], glove_file)
+    # print('tf-idf stochastic matrix (%d x %d) is generated.' % (tfidf.size(0), tfidf.size(1)))
 
     return tfidf, weights

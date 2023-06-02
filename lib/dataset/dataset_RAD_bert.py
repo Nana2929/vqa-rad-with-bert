@@ -22,13 +22,12 @@ from PIL import Image
 import h5py
 import clip
 import torch
-import torch.nn as nn
-from pytorch_pretrained_bert import BertTokenizer, BertModel
 import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils import utils
-from language.language_model import WordEmbedding
+from utils.create_dictionary import Dictionary
+from language.language_model import BERTWordEmbedding
 
 import argparse
 with warnings.catch_warnings():
@@ -59,75 +58,6 @@ def answer_filter(answers, label2ans, max_num=10):
             return True
     return False
 
-
-class Dictionary(object):
-    """Revised by Ching Wen Yang, 2023/06/02
-    """
-
-    def __init__(self, word2idx=None, idx2word=None, bert_model_name: str = None):
-
-        if word2idx and idx2word:
-            self.word2idx = word2idx
-            self.idx2word = idx2word
-
-        # load tokenizer
-        elif bert_model_name is not None:
-            self.bert_model_name = bert_model_name
-            self.tokenizer = BertTokenizer.from_pretrained(bert_model_name)
-            self.word2idx = self.tokenizer.vocab
-            self.idx2word = list(self.tokenizer.vocab.keys())
-            self.padding_idx = self.tokenizer.convert_tokens_to_ids(['[PAD]'])[0]
-
-    @property
-    def ntoken(self):
-        return len(self.word2idx)
-
-    def tokenize(self, sentence, add_word):
-        sentence = sentence.lower()
-        if "? -yes/no" in sentence:
-            sentence = sentence.replace("? -yes/no", "")
-        if "? -open" in sentence:
-            sentence = sentence.replace("? -open", "")
-        if "? - open" in sentence:
-            sentence = sentence.replace("? - open", "")
-        sentence = sentence.replace(',', '').replace('?', '').replace('\'s', ' \'s').replace(
-            '...', '').replace('x ray', 'x-ray').replace('.', '')
-        words = sentence.split()
-        tokens = []
-        if add_word:
-            for w in words:
-                tokens.append(self.add_word(w))
-        else:
-            for w in words:
-                # if a word is not in dictionary, it will be replaced with the last word of dictionary.
-                tokens.append(self.word2idx.get(w, self.padding_idx - 1))
-        return tokens
-
-    def dump_to_file(self, path):
-        cPickle.dump([self.word2idx, self.idx2word], open(path, 'wb'))
-        print(f'BERT tokenizer {self.bert_model_name} dictionary dumped to %s' % path)
-
-    @classmethod
-    def load_from_file(cls, path):
-        print('loading BERT tokenizer dictionary from %s' % path)
-        word2idx, idx2word = cPickle.load(open(path, 'rb'))
-        d = cls(word2idx = word2idx, idx2word = idx2word)
-        return d
-
-    @classmethod
-    def load_from_model_name(cls, model_name: str):
-        print('loading BERT tokenizer dictionary from %s' % model_name)
-        d = cls(bert_model_name=model_name)
-        return d
-
-    def add_word(self, word):
-        if word not in self.word2idx:
-            self.idx2word.append(word)
-            self.word2idx[word] = len(self.idx2word) - 1
-        return self.word2idx[word]
-
-    def __len__(self):
-        return len(self.idx2word)
 
 
 def _create_entry(img, data, answer):
@@ -248,16 +178,19 @@ class VQARADFeatureDataset(Dataset):
 
         This will add q_token in each entry of the dataset.
         -1 represent nil, and should be treated as padding_idx in embedding
+        TODO Revision: should be turned to 0 for padding_idx in embedding
         """
 
         for entry in self.entries:
             tokens = self.dictionary.tokenize(entry['question'], False)
             tokens = tokens[:max_length]
             if len(tokens) < max_length:
-                # Note here we pad in front of the sentence
                 padding = [self.dictionary.padding_idx] * (max_length - len(tokens))
                 tokens = tokens + padding
+
             utils.assert_eq(len(tokens), max_length)
+            # assert no negative index enters the tokenized question
+            utils.assert_ge(min(tokens), 0)
             entry['q_token'] = tokens
 
     def tensorize(self):
@@ -437,7 +370,8 @@ if __name__ == '__main__':
     dataroot = './data_rad'
 
     # d = Dictionary.load_from_file(os.path.join(dataroot,'dictionary.pkl'))
-    d = Dictionary.load_from_model_name(model_name = 'bert-base-uncased')
+    print("Loading BERT dictionary")
+    d = Dictionary.load_from_model_name(model_name='bert-base-uncased')
     dataset = VQARADFeatureDataset('train', cfg, d, dataroot)
     train_data = DataLoader(dataset,
                             batch_size=20,
