@@ -4,6 +4,7 @@
 # Name:         model
 # Description:  BAN model [Bilinear attention + Bilinear residual network]
 #-------------------------------------------------------------------------------
+from typing import List
 import torch
 import torch.nn as nn
 from language.language_model import BERTWordEmbedding, QuestionEmbedding
@@ -22,12 +23,14 @@ import os
 
 # Bilinear Attention
 class BiAttention(nn.Module):
-    def __init__(self, x_dim, y_dim, z_dim, glimpse, dropout=[.2,.5]):  #128, 1024, 1024,2
+
+    def __init__(self, x_dim, y_dim, z_dim, glimpse, dropout=[.2, .5]):  # 128, 1024, 1024, 2
         super(BiAttention, self).__init__()
         # glimpse: # of attention heads
         self.glimpse = glimpse
         self.logits = weight_norm(BCNet(x_dim, y_dim, z_dim, glimpse, dropout=dropout, k=3),
-            name='h_mat', dim=None)
+                                  name='h_mat',
+                                  dim=None)
 
     def forward(self, v, q, v_mask=True):  # v:32,1,128; q:32,12,1024
         """
@@ -36,6 +39,12 @@ class BiAttention(nn.Module):
         """
         v_num = v.size(1)
         q_num = q.size(1)
+        # RuntimeError: mat1 and mat2 shapes cannot be multiplied (180x768 and 1024x3072)
+        # print("BiAttn v:", v.shape)
+        # print("BiAttn q:", q.shape)
+        # BiAttn v: torch.Size([9, 1, 1088])
+        # BiAttn q: torch.Size([9, 20, 768])
+
         logits = self.logits(v, q)  # b x g x v x q
 
         if v_mask:
@@ -47,8 +56,9 @@ class BiAttention(nn.Module):
 
 
 class BiResNet(nn.Module):
+
     def __init__(self, cfg, dataset, priotize_using_counter=False):
-        super(BiResNet,self).__init__()
+        super(BiResNet, self).__init__()
         # Optional module: counter
         use_counter = cfg.TRAIN.ATTENTION.USE_COUNTER if priotize_using_counter is None else priotize_using_counter
         if use_counter or priotize_using_counter:
@@ -58,11 +68,16 @@ class BiResNet(nn.Module):
         else:
             counter = None
         # # init Bilinear residual network
-        b_net = []   # bilinear connect :  (XTU)T A (YTV)
-        q_prj = []   # output of bilinear connect + original question-> new question    Wq_ +q
+        b_net = []  # bilinear connect :  (XTU)T A (YTV)
+        q_prj = []  # output of bilinear connect + original question-> new question    Wq_ +q
         c_prj = []
         for i in range(cfg.TRAIN.ATTENTION.GLIMPSE):
-            b_net.append(BCNet(dataset.v_dim, cfg.TRAIN.QUESTION.HID_DIM, cfg.TRAIN.QUESTION.HID_DIM, None, k=1))
+            b_net.append(
+                BCNet(dataset.v_dim,
+                      cfg.TRAIN.QUESTION.HID_DIM,
+                      cfg.TRAIN.QUESTION.HID_DIM,
+                      None,
+                      k=1))
             q_prj.append(FCNet([cfg.TRAIN.QUESTION.HID_DIM, cfg.TRAIN.QUESTION.HID_DIM], '', .2))
             if use_counter or priotize_using_counter:
                 c_prj.append(FCNet([objects + 1, cfg.TRAIN.QUESTION.HID_DIM], 'ReLU', .0))
@@ -72,21 +87,23 @@ class BiResNet(nn.Module):
         self.c_prj = nn.ModuleList(c_prj)
         self.cfg = cfg
 
-    def forward(self, v_emb, q_emb,att_p):
+    def forward(self, v_emb, q_emb, att_p):
         b_emb = [0] * self.cfg.TRAIN.ATTENTION.GLIMPSE
         for g in range(self.cfg.TRAIN.ATTENTION.GLIMPSE):
-            b_emb[g] = self.b_net[g].forward_with_weights(v_emb, q_emb, att_p[:,g,:,:]) # b x l x h
+            b_emb[g] = self.b_net[g].forward_with_weights(v_emb, q_emb, att_p[:,
+                                                                              g, :, :])  # b x l x h
             # atten, _ = logits[:,g,:,:].max(2)
             q_emb = self.q_prj[g](b_emb[g].unsqueeze(1)) + q_emb
         return q_emb.sum(1)
 
 
-def seperate(v,q,a,att, answer_target, n_unique_close):     #q: b x 12 x 1024  v:  b x 1 x 128 answer_target : 1 x b
+def seperate(v, q, a, att, answer_target,
+             n_unique_close):  #q: b x 12 x 1024  v:  b x 1 x 128 answer_target : 1 x b
     indexs_open = []
     indexs_close = []
 
     for i in range(len(answer_target)):
-        if answer_target[i]==0:
+        if answer_target[i] == 0:
             indexs_close.append(i)
         else:
             indexs_open.append(i)
@@ -98,6 +115,7 @@ def seperate(v,q,a,att, answer_target, n_unique_close):     #q: b x 12 x 1024  v
 
 # Create BAN model
 class BAN_Model(nn.Module):
+
     def __init__(self, dataset, cfg, device):
         super(BAN_Model, self).__init__()
 
@@ -105,35 +123,43 @@ class BAN_Model(nn.Module):
         self.dataset = dataset
         self.device = device
         # init word embedding module, question embedding module, biAttention network, bi_residual network, and classifier
-        self.w_emb = BERTWordEmbedding(cfg.DATASET.EMBEDDER_MODEL) 
-        self.q_emb = QuestionEmbedding(600 if cfg.TRAIN.QUESTION.CAT else 300, cfg.TRAIN.QUESTION.HID_DIM, 1, False, .0, cfg.TRAIN.QUESTION.RNN)
+        self.q_emb_model = BERTWordEmbedding(cfg.DATASET.EMBEDDER_MODEL)
+        # self.q_emb = BERTWordEmbedding(cfg.DATASET.EMBEDDER_MODEL)
+        # self.q_emb = QuestionEmbedding(cfg.DATASET.EMB_DIM, cfg.TRAIN.QUESTION.HID_DIM, 1, False, .0, cfg.TRAIN.QUESTION.RNN)
 
         # for close att+ resnet + classify
-        self.close_att = BiAttention(dataset.v_dim, cfg.TRAIN.QUESTION.HID_DIM, cfg.TRAIN.QUESTION.HID_DIM, cfg.TRAIN.ATTENTION.GLIMPSE)
+        self.close_att = BiAttention(dataset.v_dim, cfg.TRAIN.QUESTION.HID_DIM,
+                                     cfg.TRAIN.QUESTION.HID_DIM, cfg.TRAIN.ATTENTION.GLIMPSE)
         self.close_resnet = BiResNet(cfg, dataset)
 
-
-        self.close_classifier = SimpleClassifier(cfg.TRAIN.QUESTION.CLS_HID_DIM, cfg.TRAIN.QUESTION.CLS_HID_DIM * 2, dataset.num_close_candidates, cfg)
+        self.close_classifier = SimpleClassifier(cfg.TRAIN.QUESTION.CLS_HID_DIM,
+                                                 cfg.TRAIN.QUESTION.CLS_HID_DIM * 2,
+                                                 dataset.num_close_candidates, cfg)
 
         # for open_att + resnet + classify
-        self.open_att = BiAttention(dataset.v_dim, cfg.TRAIN.QUESTION.HID_DIM, cfg.TRAIN.QUESTION.HID_DIM, cfg.TRAIN.ATTENTION.GLIMPSE)
+        self.open_att = BiAttention(dataset.v_dim, cfg.TRAIN.QUESTION.HID_DIM,
+                                    cfg.TRAIN.QUESTION.HID_DIM, cfg.TRAIN.ATTENTION.GLIMPSE)
         self.open_resnet = BiResNet(cfg, dataset)
-        self.open_classifier = SimpleClassifier(cfg.TRAIN.QUESTION.CLS_HID_DIM, cfg.TRAIN.QUESTION.CLS_HID_DIM * 2, dataset.num_open_candidates, cfg)
+        self.open_classifier = SimpleClassifier(cfg.TRAIN.QUESTION.CLS_HID_DIM,
+                                                cfg.TRAIN.QUESTION.CLS_HID_DIM * 2,
+                                                dataset.num_open_candidates, cfg)
 
-        self.bbn_classifier = SimpleClassifier(cfg.TRAIN.QUESTION.CLS_HID_DIM*2, cfg.TRAIN.QUESTION.CLS_HID_DIM * 3, dataset.num_ans_candidates, cfg)
-
+        self.bbn_classifier = SimpleClassifier(cfg.TRAIN.QUESTION.CLS_HID_DIM * 2,
+                                               cfg.TRAIN.QUESTION.CLS_HID_DIM * 3,
+                                               dataset.num_ans_candidates, cfg)
 
         # path = os.path.join(self.cfg.DATASET.DATA_DIR, "glove6b_init_300d.npy")
         # self.typeatt = typeAttention(dataset.dictionary.ntoken, path)
-        # TODO: use BERT embedder instead of glove
-        self.typeatt = typeAttention(bert_model_name=cfg.DATASET.EMBEDDER_MODEL)
 
+        # 將這酷炫東西，替換成 bert(x,x,x,) 的輸出
+        self.typeatt = self.q_emb_model
 
         # build and load pre-trained MAML model
         if cfg.TRAIN.VISION.MAML:
             weight_path = cfg.DATASET.DATA_DIR + '/' + cfg.TRAIN.VISION.MAML_PATH
             print('load initial weights MAML from: %s' % (weight_path))
-            self.maml = SimpleCNN(weight_path, cfg.TRAIN.OPTIMIZER.EPS_CNN, cfg.TRAIN.OPTIMIZER.MOMENTUM_CNN)
+            self.maml = SimpleCNN(weight_path, cfg.TRAIN.OPTIMIZER.EPS_CNN,
+                                  cfg.TRAIN.OPTIMIZER.MOMENTUM_CNN)
         # build and load pre-trained Auto-encoder model
         if cfg.TRAIN.VISION.AUTOENCODER:
             self.ae = Auto_Encoder_Model()
@@ -153,7 +179,7 @@ class BAN_Model(nn.Module):
             self.w_emb = tfidf_loading(cfg.TRAIN.QUESTION.TFIDF, self.w_emb, cfg)
         # Loading the other net
         if cfg.TRAIN.VISION.OTHER_MODEL:
-            pass
+            ...
 
     def forward(self, v, q, a, answer_target):
         """Forward
@@ -185,37 +211,43 @@ class BAN_Model(nn.Module):
             pass
 
         # get type attention
-        type_att = self.typeatt(q)
+        type_att = self.typeatt.type_attn_forward(q)
         # get lextual feature    global
-        w_emb = self.w_emb(q[0])
-        q_emb = self.q_emb.forward_all(w_emb) # [batch, q_len, q_dim]
+        q_emb = self.q_emb_model.encode_and_cast_dim_forward(q) # [batch, q_len, q_dim], where q_dim is TRAIN.QUESTION.HID_DIM
 
         # get open & close feature
-        v_open, v_close, q_open, q_close,a_open, a_close, typeatt_open, typeatt_close, _, _ = seperate(v_emb,q_emb,a,type_att, answer_target, self.dataset.num_close_candidates)
+        v_open, v_close, q_open, q_close, a_open, a_close, typeatt_open, typeatt_close, _, _ = seperate(
+            v_emb, q_emb, a, type_att, answer_target, self.dataset.num_close_candidates)
 
         # diverse Attention -> (open + close)
-        att_close, _ = self.close_att(v_close,q_close)
-        att_open, _ = self.open_att(v_open,q_open)
+        att_close, _ = self.close_att(v_close, q_close)
+        att_open, _ = self.open_att(v_open, q_open)
 
         # bilinear residual network
-        last_output_close = self.close_resnet(v_close,q_close,att_close)
-        last_output_open = self.open_resnet(v_open,q_open,att_open)
+        last_output_close = self.close_resnet(v_close, q_close, att_close)
+        last_output_open = self.open_resnet(v_open, q_open, att_open)
 
         #type attention (5.19 try)
+        # print('typeatt_close:', typeatt_close.shape)
+        # print('last_output_close:', last_output_close.shape)
+        # typeatt_close: torch.Size([9, 20, 1024])
+        # last_output_close: torch.Size([9, 1024])
+
         last_output_close = last_output_close * typeatt_close
         last_output_open = last_output_open * typeatt_open
-        #qtype attention (5.19 try)
+        # qtype attention (5.19 try)
 
         if self.cfg.TRAIN.VISION.AUTOENCODER:
-                return last_output_close,last_output_open,a_close,a_open, decoder
-        return last_output_close,last_output_open,a_close, a_open
+            return last_output_close, last_output_open, a_close, a_open, decoder
+        return last_output_close, last_output_open, a_close, a_open
 
     def classify(self, close_feat, open_feat):
         return self.close_classifier(close_feat), self.open_classifier(open_feat)
+
     def bbn_classify(self, bbn_mixed_feature):
         return self.bbn_classifier(bbn_mixed_feature)
 
-    def forward_classify(self,v,q,a,classify, n_unique_close):
+    def forward_classify(self, v, q: List[str], a, classify, n_unique_close):
         # get visual feature
         if self.cfg.TRAIN.VISION.MAML:
             maml_v_emb = self.maml(v[0]).unsqueeze(1)
@@ -239,27 +271,27 @@ class BAN_Model(nn.Module):
             pass
 
         # get type attention
-        type_att = self.typeatt(q)
+        type_att = self.typeatt.type_attn_forward(q)
         # get lextual feature    global
-        # TODO: BERT embedding
-        w_emb = self.w_emb(q[0])
-        q_emb = self.q_emb.forward_all(w_emb) # [batch, q_len, q_dim]
+        q_emb = self.q_emb_model.encode_and_cast_dim_forward(q)
         # get open & close feature
         answer_target = classify(q)
-        _,predicted=torch.max(answer_target, 1)
-        v_open, v_close, q_open, q_close,a_open, a_close,typeatt_open, typeatt_close, indexs_open, indexs_close  = seperate(v_emb,q_emb,a,type_att, predicted, self.dataset.num_close_candidates)
+
+        _, predicted = torch.max(answer_target, 1)
+        v_open, v_close, q_open, q_close, a_open, a_close, typeatt_open, typeatt_close, indexs_open, indexs_close = seperate(
+            v_emb, q_emb, a, type_att, predicted, self.dataset.num_close_candidates)
 
         # diverse Attention -> (open + close)
         att_close, _ = self.close_att(v_close, q_close)
         att_open, _ = self.open_att(v_open, q_open)
 
         # bilinear residual network
-        last_output_close = self.close_resnet(v_close,q_close,att_close)
-        last_output_open = self.open_resnet(v_open,q_open,att_open)
+        last_output_close = self.close_resnet(v_close, q_close, att_close)
+        last_output_open = self.open_resnet(v_open, q_open, att_open)
 
         # type attention (5.19 try)
         last_output_close = last_output_close * typeatt_close
         last_output_open = last_output_open * typeatt_open
         if self.cfg.TRAIN.VISION.AUTOENCODER:
-                return last_output_close,last_output_open,a_close,a_open, decoder, indexs_open, indexs_close
-        return last_output_close,last_output_open,a_close, a_open, indexs_open, indexs_close
+            return last_output_close, last_output_open, a_close, a_open, decoder, indexs_open, indexs_close
+        return last_output_close, last_output_open, a_close, a_open, indexs_open, indexs_close
