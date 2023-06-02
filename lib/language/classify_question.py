@@ -77,8 +77,7 @@ class typeAttention(nn.Module):
     def __init__(self, bert_model_name: str,
                  dropout = 0.5,
                  in_dim= 768, # BERT embedding dim
-                 size_question: int = 20,
-                 strategy = 'sum last four'):
+                 size_question: int = 20):
         super(typeAttention, self).__init__()
         # self.w_emb = WordEmbedding(size_question, 300, 0.0, False)
         # self.w_emb.init_embedding(path_init)
@@ -115,7 +114,6 @@ class typeAttention(nn.Module):
 # TODO
 class classify_model(nn.Module):
     def __init__(self, bert_model_name: str,
-                 dropout = 0.5,
                  in_dim= 768, # BERT embedding dim
                  size_question: int = 20):
         super(classify_model,self).__init__()
@@ -123,9 +121,7 @@ class classify_model(nn.Module):
         # self.w_emb.init_embedding(path_init)
         # self.q_emb = QuestionEmbedding(300, 1024 , 1, False, 0.0, 'GRU')
         self.w_emb = BERTWordEmbedding(
-            bert_model_name = bert_model_name,
-            dropout = dropout,
-        )
+            bert_model_name = bert_model_name)
         self.w_emb.init_bert_embedding()
         self.q_emb = QuestionEmbedding(self.w_emb.emb_dim,
                                        1024 , 1, False, 0.0, 'GRU')
