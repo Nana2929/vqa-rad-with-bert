@@ -123,7 +123,9 @@ class BAN_Model(nn.Module):
         self.dataset = dataset
         self.device = device
         # init word embedding module, question embedding module, biAttention network, bi_residual network, and classifier
-        self.q_emb_model = BERTWordEmbedding(cfg.DATASET.EMBEDDER_MODEL, cfg.DATASET.FIX_EMB_MODEL)
+        # print('check type', cfg.DATASET.FIX_EMB_MODEL) 
+        self.q_emb_model = BERTWordEmbedding(cfg.DATASET.EMBEDDER_MODEL,
+                                             no_train=cfg.DATASET.FIX_EMB_MODEL)
         # self.q_emb = BERTWordEmbedding(cfg.DATASET.EMBEDDER_MODEL)
         # self.q_emb = QuestionEmbedding(cfg.DATASET.EMB_DIM, cfg.TRAIN.QUESTION.HID_DIM, 1, False, .0, cfg.TRAIN.QUESTION.RNN)
 
