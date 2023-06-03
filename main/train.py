@@ -17,6 +17,15 @@ import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from lib.utils import utils
 
+
+
+OPTIM_MAP = {
+    'ADAMAX': torch.optim.Adamax,
+    'ADAM': torch.optim.Adam,
+    'SGD': torch.optim.SGD,
+    'ADAMW': torch.optim.AdamW}
+
+
 def compute_score_with_logits(logits, labels):
     if labels.shape[0] == 0:     # sometimes, all samples in the batch are either open or close
                                  # hence, the labels and logits is empty
@@ -46,8 +55,7 @@ def train(cfg, model, question_model, train_loader, eval_loader, n_unique_close,
     if not os.path.exists(tblog_dir):
         os.makedirs(tblog_dir)
     writer = SummaryWriter(log_dir=tblog_dir)
-    base_lr = cfg.TRAIN.OPTIMIZER.BASE_LR
-    momentum = cfg.TRAIN.OPTIMIZER.MOMENTUM_CNN
+
     model = model.to(device)
     question_model = question_model.to(device)
     # create packet for output
@@ -60,35 +68,49 @@ def train(cfg, model, question_model, train_loader, eval_loader, n_unique_close,
     logger.info(">>>The net is:")
     logger.info(model)
 
-    # 調參大法：transformers 需要 warmup, lr 也不可以太大
+    # transformers 需要 warmup, lr 也不可以太大
 
-    # Adamax optimizer
-    #optim = torch.optim.Adamax(params=model.parameters(), lr=base_lr)
+    """
+    credit:
+    Eric: 2023/06/03 added warmup for BERT
+    Nana: 2023/06/03 revised to have 2 optimizers for BERT and BAN
+    """
+    ban_model = model
+    bert_model = model.q_emb_model.model
+    # =========== BAN model optimizer ===============
+    no_bert_params = []
+    for name, param in ban_model.named_parameters():
+        if not name.startswith("q_emb_model.model"):
+            no_bert_params.append(param)
 
-    # 2023/06/03 02:23: try scheduler
-    # lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optim,
-    #                                    step_size=10, # warmup epochs
-    #                                    gamma=0.1)
 
-    """ ==================================== """
-    """credit: Eric (2023/06/03)"""
-    param_optimizer = list(model.named_parameters())
+    ban_optimizer = OPTIM_MAP[cfg.TRAIN.BAN_OPTIMIZER.TYPE](params=no_bert_params,
+                                                              lr= cfg.TRAIN.BAN_OPTIMIZER.BASE_LR)
+
+    # =========== BERT model optimizer ===============
+
     no_decay = ["bias", "LayerNorm.bias", "LayerNorm.weight"]
     weight_decay = 1e-2
+    param_optimizer = list(bert_model.named_parameters())
     optimizer_grouped_parameters = [
         {'params': [param for name, param in param_optimizer if not any(
             nd in name for nd in no_decay)], 'weight_decay': weight_decay},
         {'params': [param for name, param in param_optimizer if any(
             nd in name for nd in no_decay)], 'weight_decay': 0.0}
     ]
-
-    optim = AdamW(params=optimizer_grouped_parameters, lr=base_lr)
+    bert_optimizer = OPTIM_MAP[cfg.TRAIN.BERT_OPTIMIZER.TYPE](params=optimizer_grouped_parameters,
+                                                             lr= cfg.TRAIN.BERT_OPTIMIZER.BASE_LR)
     global_step = int(cfg.TRAIN.N_EPOCH*len(train_loader))
     num_warmup_steps = int(global_step*0.1)
     logger.info(f"global_step: {global_step}, num_warmup_steps: {num_warmup_steps}")
-    lr_scheduler = get_linear_schedule_with_warmup(optim, num_warmup_steps=int(global_step*0.1), num_training_steps=global_step)
-    """ ===================================== """
+    bert_lr_scheduler = get_linear_schedule_with_warmup(bert_optimizer,
+                                                   num_warmup_steps=int(global_step*0.1), num_training_steps=global_step)
 
+
+    logger.info(f"ban_optimizer type: {cfg.TRAIN.BAN_OPTIMIZER.TYPE}")
+    if not cfg.DATASET.FIX_EMB_MODEL:
+        logger.info(f"bert_optimizer type: {cfg.TRAIN.BERT_OPTIMIZER.TYPE}")
+    # =======================================================
     # Loss function
     if cfg.LOSS.LOSS_TYPE == "BCELogits":
         criterion = torch.nn.BCEWithLogitsLoss()
@@ -115,7 +137,8 @@ def train(cfg, model, question_model, train_loader, eval_loader, n_unique_close,
 
         # Predicting and computing score
         for i, (v, q, a, answer_type, question_type, phrase_type, answer_target) in enumerate(train_loader):
-            optim.zero_grad()
+            ban_optimizer.zero_grad()
+            bert_optimizer.zero_grad()
             if cfg.TRAIN.VISION.MAML:
                 v[0] = v[0].reshape(v[0].shape[0], 84, 84).unsqueeze(1)
                 v[0] = v[0].to(device)
@@ -161,9 +184,11 @@ def train(cfg, model, question_model, train_loader, eval_loader, n_unique_close,
                 loss = loss + (loss_ae * cfg.TRAIN.VISION.AE_ALPHA)
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 0.25)
-            optim.step()
-            lr_scheduler.step()
 
+
+            bert_optimizer.step()
+            bert_lr_scheduler.step()
+            ban_optimizer.step()
             #compute the acc for open and close
             batch_close_score = compute_score_with_logits(preds_close,a_close.data).sum()
             batch_open_score = compute_score_with_logits(preds_open,a_open.data).sum()
@@ -183,7 +208,8 @@ def train(cfg, model, question_model, train_loader, eval_loader, n_unique_close,
         logger.info('-------[Epoch]:{}-------'.format(epoch))
         logger.info('[Train] Loss:{:.6f} , Train_Acc:{:.6f}%'.format(total_loss, train_score))
         logger.info('[Train] Loss_Open:{:.6f} , Loss_Close:{:.6f}%'.format(total_open_loss, total_close_loss))
-        logger.info('[Current lr]:{:.10f}'.format(optim.param_groups[0]['lr']))
+        logger.info('[Current lr (BAN)]:{:.10f}'.format(ban_optimizer.param_groups[0]['lr']))
+        logger.info('[Current lr (BERT)]:{:.10f}'.format(bert_optimizer.param_groups[0]['lr']))
 
         writer.add_scalar("Loss/train", total_loss, epoch)
         writer.add_scalar("Loss_Open/train", total_open_loss, epoch)
@@ -198,7 +224,8 @@ def train(cfg, model, question_model, train_loader, eval_loader, n_unique_close,
                 best_epoch = epoch
                 # Save the best acc epoch
                 model_path = os.path.join(ckpt_path, '{}_best.pth'.format(best_epoch))
-                utils.save_model(model_path, model, best_epoch, eval_score, open_score, close_score, optim)
+                utils.save_model(model_path, model, best_epoch, eval_score, open_score, close_score, ban_optimizer=ban_optimizer
+                                ,bert_optimizer=bert_optimizer)
             logger.info('[Result] The best acc is {:.6f}% at epoch {}'.format(best_eval_score, best_epoch))
             writer.add_scalar("Accuracy/val", eval_score, epoch)
             writer.add_scalar("Accuracy/val/open", open_score, epoch)
