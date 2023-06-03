@@ -51,24 +51,30 @@ def linear(in_dim, out_dim, bias=True):
 class QuestionAttention(nn.Module):
     def __init__(self,
                  in_dim,
-                 dim):
+                 hid_dim):
         super().__init__()
 
-        self.tanh_gate = linear(in_dim + dim, dim)
-        self.sigmoid_gate = linear(in_dim + dim, dim)
-        self.attn = linear(dim, 1)
-        self.dim = dim
+        self.tanh_gate = linear(in_dim + in_dim, hid_dim)
+        self.sigmoid_gate = linear(in_dim + in_dim, hid_dim)
+        self.attn = linear(hid_dim, 1)
+        self.hid_dim = hid_dim
 
     def forward(self, context, question):  #b*12*300 b*12*1024/  or b*77*512 if clip
 
         if len(question.shape) == 2:   # in case of using clip to encode q
             question = question.unsqueeze(1)
             question = question.expand(-1, 77, -1)
-        concated = torch.cat([context, question], -1)  # b * 12 * 300 + 1024 / or 512 if clip
-        concated = torch.mul(torch.tanh(self.tanh_gate(concated)), torch.sigmoid(self.sigmoid_gate(concated)))  #b*12*1024 / or b*77*512 if clip
+        concated = torch.cat([context, question], -1)  # b * 12 * (emb_dim + 1024) / or 512 if clip
+        # concated.shape: [b, max_seq_len, context最後dim+question最後dim]
+        tanh_out = torch.tanh(self.tanh_gate(concated))
+        sigmoid_out= torch.sigmoid(self.sigmoid_gate(concated))
+        # tanh_out.shape: [b, max_seq_len, hid_dim]
+        # sigmoid_out.shape: [b, max_seq_len, hid_dim]
+        concated = torch.mul(tanh_out, sigmoid_out)  #b*12*1024 / or b*77*512 if clip
         a = self.attn(concated) # #b*12*1  / or b*77*1 if clip
         attn = F.softmax(a.squeeze(), 1) #b*12 / or b*77 if clip
-        # torch.bmm(): Performs a batch matrix-matrix product of matrices stored in input and mat2.
+        # torch.bmm():
+        # Performs a batch matrix-matrix product of matrices stored in input and mat2.
         ques_attn = torch.bmm(attn.unsqueeze(1), question).squeeze() #b*1024 / or b*512 if clip
 
         return ques_attn
@@ -76,34 +82,31 @@ class QuestionAttention(nn.Module):
 
 class typeAttention(nn.Module):
     def __init__(self, bert_model_name: str,
-                 dropout = 0.5,
-                 in_dim= 768, # BERT embedding dim
-                 size_question: int = 20):
+                 in_dim= 768):
         super(typeAttention, self).__init__()
-        # self.w_emb = WordEmbedding(size_question, 300, 0.0, False)
-        # self.w_emb.init_embedding(path_init)
-        # self.q_emb = QuestionEmbedding(300, 1024, 1, False, 0.0, 'GRU')
-        self.w_emb = BERTWordEmbedding(
+        self.q_emb_model = BERTWordEmbedding(
             bert_model_name = bert_model_name,
-            dropout = dropout,
         )
-        self.w_emb.init_bert_embedding()
-        self.q_emb = QuestionEmbedding(in_dim, 1024, 1, False, 0.0, 'GRU')
 
-        self.q_final = QuestionAttention(
+        self.q_attn= QuestionAttention(
             in_dim = in_dim,
-            dim = 1024)
+            hid_dim = 1024)
+        self.f_proj = linear(in_dim, 1024)
         self.f_fc1 = linear(1024, 2048)
         self.f_fc2 = linear(2048, 1024)
-        self.f_fc3 = linear(1024, 1024) # why 1024 not num_qtype
+        self.f_fc3 = linear(1024, 1024)
 
     def forward(self, question):
-        question = question[0]
-        w_emb = self.w_emb(question)
-        q_emb = self.q_emb.forward_all(w_emb)  # [batch, q_len, q_dim]
-        q_final = self.q_final(w_emb, q_emb)   # b, 1024
+        q_first = self.q_emb_model.emb_forward(question)
+        q_last = self.q_emb_model.encode_and_forward(question)
+        # q_first shape: torch.Size([16, 20, 768]) = [b, max_seq_len, emb_dim] (emb layer of BERT)
+        # q_last shape: torch.Size([16, 20, 768]) = [b, max_seq_len, emb_dim]   (output layer of BERT)
+        q_final = self.q_attn(q_first, q_last)
+        # q_final shape: torch.Size([16, 768]) = [b, emb_dim]
+        q_proj = self.f_proj(q_final)
+        # q_proj shape: torch.Size([16, 1024]) = [b, hid_dim]
 
-        x_f = self.f_fc1(q_final)
+        x_f = self.f_fc1(q_proj)
         x_f = F.relu(x_f)
         x_f = self.f_fc2(x_f)
         x_f = F.dropout(x_f)
@@ -113,7 +116,6 @@ class typeAttention(nn.Module):
         return x_f
 
 
-# TODO
 class classify_model(nn.Module):
     def __init__(self, bert_model_name: str,
                  in_dim= 768, # BERT embedding dim
@@ -124,7 +126,7 @@ class classify_model(nn.Module):
         # self.q_emb = QuestionEmbedding(300, 1024 , 1, False, 0.0, 'GRU')
         self.q_emb = BERTWordEmbedding(
             bert_model_name = bert_model_name)
-        
+
         self.classifier = nn.Sequential(
             nn.Linear(self.q_emb.config.hidden_size, 256),
             nn.ReLU(),
@@ -134,10 +136,6 @@ class classify_model(nn.Module):
             nn.Dropout(0.1),
             nn.Linear(64, 2)
         )
-        
-        # self.f_fc1 = linear(in_dim, 256)
-        # self.f_fc2 = linear(256,64)
-        # self.f_fc3 = linear(64,2) # OPEN, CLOSE classifier
 
     def forward(self,question: List[str]):
         logits = self.q_emb.encode_and_forward(question)
