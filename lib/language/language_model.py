@@ -20,7 +20,7 @@ class BERTWordEmbedding(nn.Module):
     """BERT Word Embedding
     """
 
-    def __init__(self, bert_model_name, dropout=0.5, max_length=20):
+    def __init__(self, bert_model_name, no_train = True, dropout=0.5, max_length=20):
         super(BERTWordEmbedding, self).__init__()
 
         self.tokenizer =  AutoTokenizer.from_pretrained(bert_model_name)
@@ -35,8 +35,11 @@ class BERTWordEmbedding(nn.Module):
         self.emb = nn.Embedding(self.vocab_size + 1,
                                 self.emb_dim,
                                 padding_idx=self.find_padding_idx())
-        self.emb.weight.requires_grad = True # fixed
-       
+        if no_train:
+            for param in self.model.parameters():
+                param.requires_grad = False
+        print(f"Is BERT trainable: {self.model.training}")
+
     def find_padding_idx(self):
         pad_id = self.tokenizer.convert_tokens_to_ids(['[PAD]'])[0]
         return pad_id
@@ -69,8 +72,6 @@ class BERTWordEmbedding(nn.Module):
             token_vecs_sum.append(sum_vec)
         return token_vecs_sum  # shape [seq_len, 768]
 
-    def is_bert_training(self):
-        return self.model.training
 
     def fully_forward(self, input_ids, token_type_ids=None, attention_mask=None, **kwargs):
         # (batch_size, seq_len, 1024)
@@ -81,11 +82,11 @@ class BERTWordEmbedding(nn.Module):
         # 1024: HID_DIM
         return  self.output_layer(self.encode_and_forward(questions)) # (batch_size, seq_len, 1024)  as type attention
 
-    # def type_attn_forward(self, questions:List[str]):
-    #     # for TypeAttention
-    #     # (batch_size, 1024)
-    #     # 1024: HID_DIM
-    #     return torch.sum(self.encode_and_cast_dim_forward(questions), dim=1).squeeze()
+    def type_attn_forward(self, questions:List[str]):
+        # for TypeAttention
+        # (batch_size, 1024)
+        # 1024: HID_DIM
+        return torch.sum(self.encode_and_cast_dim_forward(questions), dim=1).squeeze()
 
 
     def emb_forward(self, questions: List[str]):
