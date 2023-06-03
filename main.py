@@ -63,7 +63,8 @@ if __name__ == '__main__':
 
     # d = Dictionary.load_from_file(data_dir + '/dictionary.pkl')
     # TODO: use BERT embedding to encode the dataset
-    d = Dictionary.load_from_model_name('bert-base-uncased')
+    # d = Dictionary.load_from_model_name('bert-base-uncased')
+    d = None #do not use dictionary, use BERTWordEmbedding to encode
     if cfg.DATASET.DATASET == "RAD":
         train_dataset = VQARADFeatureDataset('train', cfg, d, dataroot=data_dir)
         val_dataset = VQARADFeatureDataset('test', cfg, d, dataroot=data_dir)
@@ -95,7 +96,7 @@ if __name__ == '__main__':
         ckpt = './saved_models/type_classifier_slake.pth'
         pretrained_model = torch.load(ckpt, map_location='cuda:0')['model_state']
     else:
-        ckpt = './saved_models/type_classifier_rad_bert_2023Jun02-215848.pth'
+        ckpt = 'saved_models/type_classifier_rad_biobert_2023Jun03-155924.pth'
         # TODO: load the retrained model
         # The best acc is 98.669623% at epoch 1
         qtype_ckpt = './saved_models/qtype_classifier.pth'
