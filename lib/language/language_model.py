@@ -20,7 +20,7 @@ class BERTWordEmbedding(nn.Module):
     """BERT Word Embedding
     """
 
-    def __init__(self, bert_model_name, no_train = True, dropout=0.5, max_length=20):
+    def __init__(self, bert_model_name, no_train=True, dropout=0.5, max_length=20):
         super(BERTWordEmbedding, self).__init__()
 
         self.tokenizer =  AutoTokenizer.from_pretrained(bert_model_name)
@@ -38,7 +38,8 @@ class BERTWordEmbedding(nn.Module):
         if no_train:
             for param in self.model.parameters():
                 param.requires_grad = False
-        print(f"Is BERT trainable: {self.model.training}")
+            print(f'BERT {bert_model_name} is fixed.')
+        else: print(f'BERT {bert_model_name} is trainable.')
 
     def find_padding_idx(self):
         pad_id = self.tokenizer.convert_tokens_to_ids(['[PAD]'])[0]
