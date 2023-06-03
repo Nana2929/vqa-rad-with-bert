@@ -115,13 +115,13 @@ def _load_dataset(dataroot, name, img_id2val, label2ans):
 
 class VQARADFeatureDataset(Dataset):
 
-    def __init__(self, name, cfg, dictionary, dataroot='data', q_emb_model="bert-base-uncased"):
+    def __init__(self, name, cfg, dictionary=None, dataroot='data', q_emb_model="bert-base-uncased"):
         super(VQARADFeatureDataset, self).__init__()
-        
+
         # question
         self.q_emb_model = q_emb_model
         self.q_tokenizer = AutoTokenizer.from_pretrained(self.q_emb_model)
-        
+
         question_len = cfg.TRAIN.QUESTION.LENGTH
         self.cfg = cfg
         self.name = name
@@ -188,28 +188,29 @@ class VQARADFeatureDataset(Dataset):
         """
 
         for entry in self.entries:
-            tokens = self.dictionary.tokenize(entry['question'], False)
+            # tokens = self.dictionary.tokenize(entry['question'], False)
+            tokens = entry['question']
             tokens = tokens[:max_length]
-            if len(tokens) < max_length:
-                padding = [self.dictionary.padding_idx] * (max_length - len(tokens))
-                tokens = tokens + padding
+            # if len(tokens) < max_length:
+            #     padding = [self.dictionary.padding_idx] * (max_length - len(tokens))
+            #     tokens = tokens + padding
 
-            utils.assert_eq(len(tokens), max_length)
-            # assert no negative index enters the tokenized question
-            utils.assert_ge(min(tokens), 0)
+            # utils.assert_eq(len(tokens), max_length)
+            # # assert no negative index enters the tokenized question
+            # utils.assert_ge(min(tokens), 0)
             entry['q_token'] = tokens
 
         """
-        
-        
-        bert <- input_ids, token_type_ids, attention_mask 
+
+
+        bert <- input_ids, token_type_ids, attention_mask
                 input_ids: (batch, seq_len)
                 token_type_ids: (batch, seq_len)
                 attention_mask: (batch, seq_len)
-                
+
         collate_fn:
             batch = {
-                # q needs to be separated into these 3 elements 
+                # q needs to be separated into these 3 elements
                 input_ids: (batch, seq_len),
                 token_type_ids: (batch, seq_len),
                 attention_mask: (batch, seq_len),
@@ -217,9 +218,9 @@ class VQARADFeatureDataset(Dataset):
                 answer_type: (???),
                 ... any v needed
             }
- 
+
         bert_model(**batch)
- 
+
         """
     # def bert_tokenize(self, max_length):
     #     """Tokenizes the questions.
@@ -230,14 +231,14 @@ class VQARADFeatureDataset(Dataset):
     #     """
 
     #     for entry in self.entries:
-            
+
     #         question = entry['question']
     #         encode = self.q_tokenizer(question,
-    #                                   max_length=max_length, 
+    #                                   max_length=max_length,
     #                                   pad_to_max_length=True,
     #                                   truncation=True,
     #                                   )
-            
+
     #         utils.assert_eq(len(encode['input_ids']), max_length)
     #         entry['q_token'] = encode
 
@@ -292,7 +293,7 @@ class VQARADFeatureDataset(Dataset):
 
         # question_data=[entry['q_token']]
         question_data = entry["question"] # str
-        
+
         if answer_type == 'CLOSED':
             answer_target = 0
         else:
