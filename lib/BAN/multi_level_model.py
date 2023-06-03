@@ -149,10 +149,8 @@ class BAN_Model(nn.Module):
                                                dataset.num_ans_candidates, cfg)
 
         # path = os.path.join(self.cfg.DATASET.DATA_DIR, "glove6b_init_300d.npy")
-        # self.typeatt = typeAttention(dataset.dictionary.ntoken, path)
-
-        # 將這酷炫東西，替換成 bert(x,x,x,) 的輸出
-        self.typeatt = self.q_emb_model
+        self.typeatt = typeAttention(cfg.DATASET.EMBEDDER_MODEL,
+                                     cfg.DATASET.EMB_DIM)
 
         # build and load pre-trained MAML model
         if cfg.TRAIN.VISION.MAML:
@@ -211,10 +209,10 @@ class BAN_Model(nn.Module):
             pass
 
         # get type attention
-        type_att = self.typeatt.type_attn_forward(q)
+        type_att = self.typeatt(q)
         # get lextual feature    global
         q_emb = self.q_emb_model.encode_and_cast_dim_forward(q) # [batch, q_len, q_dim], where q_dim is TRAIN.QUESTION.HID_DIM
-
+        # print('Is q_emb_model training?', self.q_emb_model.is_bert_training())
         # get open & close feature
         v_open, v_close, q_open, q_close, a_open, a_close, typeatt_open, typeatt_close, _, _ = seperate(
             v_emb, q_emb, a, type_att, answer_target, self.dataset.num_close_candidates)
@@ -227,7 +225,7 @@ class BAN_Model(nn.Module):
         last_output_close = self.close_resnet(v_close, q_close, att_close)
         last_output_open = self.open_resnet(v_open, q_open, att_open)
 
-        #type attention (5.19 try)
+        # type attention (5.19 try)
         # print('typeatt_close:', typeatt_close.shape)
         # print('last_output_close:', last_output_close.shape)
         # typeatt_close: torch.Size([9, 20, 1024])
@@ -271,7 +269,7 @@ class BAN_Model(nn.Module):
             pass
 
         # get type attention
-        type_att = self.typeatt.type_attn_forward(q)
+        type_att = self.typeatt(q)
         # get lextual feature    global
         q_emb = self.q_emb_model.encode_and_cast_dim_forward(q)
         # get open & close feature
