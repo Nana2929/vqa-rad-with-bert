@@ -124,6 +124,20 @@ def save_model(path, model, epoch, eval_score, open_score=None, close_score=None
 
     torch.save(model_dict, path)
 
+def keep_last_n_models(path, n=1):
+
+    def get_epoch(model_name):
+        epoch = model_name.split('_')[0]
+        return int(epoch)
+
+    if not os.path.exists(path):
+        return
+    model_list = os.listdir(path)
+    model_list = [x for x in model_list if x.endswith('.pth')]
+    model_list = sorted(model_list, key=lambda x: get_epoch(x))
+    for model in model_list[:-n]: 
+        os.remove(os.path.join(path, model))
+
 
 def trim_collate(batch):
     "Puts each data field into a tensor with outer dimension batch size"
