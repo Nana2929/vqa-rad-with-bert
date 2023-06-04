@@ -123,7 +123,7 @@ class BAN_Model(nn.Module):
         self.dataset = dataset
         self.device = device
         # init word embedding module, question embedding module, biAttention network, bi_residual network, and classifier
-        # print('check type', cfg.DATASET.FIX_EMB_MODEL) 
+        # print('check type', cfg.DATASET.FIX_EMB_MODEL)
         self.q_emb_model = BERTWordEmbedding(cfg.DATASET.EMBEDDER_MODEL,
                                              no_train=cfg.DATASET.FIX_EMB_MODEL)
         # self.q_emb = BERTWordEmbedding(cfg.DATASET.EMBEDDER_MODEL)
@@ -151,9 +151,10 @@ class BAN_Model(nn.Module):
                                                dataset.num_ans_candidates, cfg)
 
         # path = os.path.join(self.cfg.DATASET.DATA_DIR, "glove6b_init_300d.npy")
-        # self.typeatt = typeAttention(cfg.DATASET.EMBEDDER_MODEL,
-        #                              cfg.DATASET.EMB_DIM)
-        self.typeatt = self.q_emb_model.type_attn_forward
+        if cfg.TRAIN.ATTENTION.USE_ORIGINAL_TYPEATT:
+            self.typeatt = typeAttention(cfg.DATASET.EMBEDDER_MODEL,
+                                     cfg.DATASET.EMB_DIM)
+        else: self.typeatt = self.q_emb_model.type_attn_forward
         # build and load pre-trained MAML model
         if cfg.TRAIN.VISION.MAML:
             weight_path = cfg.DATASET.DATA_DIR + '/' + cfg.TRAIN.VISION.MAML_PATH
