@@ -1,0 +1,2 @@
+export CUDA_VISIBLE_DEVICES=1
+python3 main.py --cfg=configs/qcr_pubmedclipRN50x4_ae_rad_nondeterministic_typeatt_2lrs.yaml

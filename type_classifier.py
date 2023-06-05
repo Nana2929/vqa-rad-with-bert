@@ -16,15 +16,14 @@ import torch.nn as nn
 import os
 from torch.utils.data import DataLoader
 from lib.utils.create_dictionary import Dictionary
-from lib.language.language_model import WordEmbedding, QuestionEmbedding
 import argparse
-from torch.nn.init import kaiming_uniform_, xavier_uniform_
 import torch.nn.functional as F
 from datetime import datetime
 from lib.utils import utils
 from lib.language.classify_question import classify_model
 
-
+# set  TOKENIZERS_PARALLELISM=(true | false)
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 BERT_MODEL_NAME = 'bert-base-uncased'
 BATCH_SIZE = 8
 
@@ -42,7 +41,7 @@ def parse_args():
     parser.add_argument('--gpu', type=int, default=0,
                         help='use gpu device. default:0')
     parser.add_argument('--seed', type=int, default=5
-                        , help='random seed for gpu.default:5')
+                        , help='random seed for gpu. Default:5')
     args = parser.parse_args()
     return args
 
@@ -56,7 +55,11 @@ def evaluate(model, dataloader, logger, device):
         for i,row in enumerate(dataloader):
             # see lib/dataset/dataset_RAD_bert.py for eval data format
             image_data, question, target, answer_type, question_type, phrase_type, answer_target, _, _, _ = row
-            question[0], answer_target = question[0].to(device), answer_target.to(device)
+            answer_target = answer_target.to(device)
+            output = net(question)
+            pred = output.data.max(1)[1]
+            correct = (pred == answer_target).data.cpu().sum()
+
             output = model(question)
             pred = output.data.max(1)[1]
             correct = pred.eq(answer_target.data).cpu().sum()
@@ -93,13 +96,11 @@ if __name__=='__main__':
     val_data = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2, pin_memory=True, drop_last=False)
 
     # net = classify_model(d.ntoken, os.path.join(dataroot, 'glove6b_init_300d.npy'))
-    # TODO: 改成用 BERT embedding 訓練 (DONE 2023/06/02) 
+    # TODO: 改成用 BERT embedding 訓練 (DONE 2023/06/02)
     net = classify_model(bert_model_name=BERT_MODEL_NAME,
-                         dropout = 0.5,
                          in_dim=768)
     # fix
     net = net.to(device)
-
 
     run_timestamp = datetime.now().strftime("%Y%b%d-%H%M%S")
     ckpt_path = os.path.join('./log', run_timestamp)
@@ -125,7 +126,9 @@ if __name__=='__main__':
         total_loss = 0
         for i, row in enumerate(train_data):
             image_data, question, target, answer_type, question_type, phrase_type, answer_target = row
-            question[0], answer_target = question[0].to(device), answer_target.to(device)
+            # question[0], answer_target = question[0].to(device), answer_target.to(device)
+            # question" List[str]
+            answer_target = answer_target.to(device)
             optimizer.zero_grad()
             output = net(question)
             loss = criterion(output, answer_target)

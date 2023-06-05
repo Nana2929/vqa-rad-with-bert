@@ -1,0 +1,63 @@
+NAME: 'QCR.CLIPRN50.AE.ROCO.VQARAD.200epoch'
+OUTPUT_DIR: './output/qcr_biobert_refinedimgs_2lrs/pubmedclipViT32_ae/roco/VQARAD'
+CPU_MODE: False
+SEED: 88
+
+DATASET:
+  DATASET: "RAD"
+  DATA_DIR: "./data_rad"
+  DATA_TYPE: 'jpg'
+  EMBEDDER_MODEL: 'emilyalsentzer/Bio_ClinicalBERT'
+  EMB_DIM: 768
+  FIX_EMB_MODEL: False
+
+LOSS:
+  LOSS_TYPE: 'BCELogits'
+
+TRAIN:
+  BATCH_SIZE: 12
+  N_EPOCH: 150
+  NUM_WORKERS: 2
+  RESUME: False
+  INPUT_SNAPSHOT: ""
+  BERT_OPTIMIZER:
+    TYPE: 'ADAMW'
+    BASE_LR: 1e-5
+  BAN_OPTIMIZER:
+    TYPE: 'ADAMAX'
+    MOMENTUM_CNN: 0.05
+    EPS_CNN: 1e-5
+    BASE_LR: 1e-3
+  ACTIVATION: 'relu'
+  DROPOUT: 0.5
+  ATTENTION:
+    MODE: 'BAN'
+    GLIMPSE: 10  # Attn heads
+    USE_COUNTER: False
+    NUM_STACKS: 2    # For SAN
+  QUESTION:
+    RNN: 'GRU' # not used
+    LENGTH: 20
+    TFIDF: False
+    CAT: False # not used
+    HID_DIM: 1024   ## Dim of joint semantic features
+  VISION:
+    V_DIM: 576    ## Visual input dim : 1024 + 64
+    AUTOENCODER: True
+    AE_PATH: "pretrained_ae.pth"
+    AE_ALPHA: 0.001
+    MAML: False
+    CLIP: True
+    CLIP_PATH: "../Medical-VQA/PubMedCLIP_ViT32.pth"
+    OTHER_MODEL: False
+
+
+TRANSFORMS:
+  TRAIN_TRANSFORMS: ("random_resized_crop", "random_horizontal_flip")
+  TEST_TRANSFORMS: ("shorter_resize_for_crop", "center_crop")
+
+TEST:
+  BATCH_SIZE: 8
+  NUM_WORKERS: 4
+  MODEL_FILE: "./output/qcr/pubmedclipRN50_ae/roco/VQARAD/QCR.CLIPViT32.AE.ROCO.VQARAD.16batchsize.200epoch.withTFIDF.nondeterministic/62_best.pth"
+  RESULT_DIR: "./results"

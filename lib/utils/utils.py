@@ -107,7 +107,8 @@ def print_model(model, logger):
     if logger:
         logger.write('nParams=\t'+str(nParams))
 
-def save_model(path, model, epoch, eval_score, open_score=None, close_score=None, optimizer=None):
+def save_model(path, model, epoch, eval_score, open_score=None, close_score=None,
+               ban_optimizer=None, bert_optimizer=None):
     model_dict = {
             'epoch': epoch,
             'model_state': model.state_dict(),
@@ -115,10 +116,27 @@ def save_model(path, model, epoch, eval_score, open_score=None, close_score=None
             'open_score': open_score,
             'close_score': close_score
         }
-    if optimizer is not None:
-        model_dict['optimizer_state'] = optimizer.state_dict()
+    if ban_optimizer is not None:
+        model_dict['ban_optimizer_state'] = ban_optimizer.state_dict()
+
+    if bert_optimizer is not None:
+        model_dict['bert_optimizer_state'] = bert_optimizer.state_dict()
 
     torch.save(model_dict, path)
+
+def keep_last_n_models(path, n=1):
+
+    def get_epoch(model_name):
+        epoch = model_name.split('_')[0]
+        return int(epoch)
+
+    if not os.path.exists(path):
+        return
+    model_list = os.listdir(path)
+    model_list = [x for x in model_list if x.endswith('.pth')]
+    model_list = sorted(model_list, key=lambda x: get_epoch(x))
+    for model in model_list[:-n]: 
+        os.remove(os.path.join(path, model))
 
 
 def trim_collate(batch):
@@ -294,7 +312,7 @@ def tfidf_loading(use_tfidf, w_emb, cfg):
                 # tfidf, weights = tfidf_from_questions(['train'], args, dict)
                 tfidf, weights = tfidf_from_questions(['train', 'test'], cfg, dict)
                 # w_emb.init_embedding(os.path.join(data_dir, 'glove6b_init_300d.npy'), tfidf, weights)
-                w_emb.init_bert_embedding() 
+                w_emb.init_bert_embedding()
                 with open(os.path.join(data_dir ,'embed_tfidf_weights.pkl'), 'wb') as f:
                     torch.save(w_emb, f)
                 print("Saving embedding with tfidf and weights successfully")
