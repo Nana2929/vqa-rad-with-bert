@@ -22,6 +22,7 @@ from lib.dataset import *
 from lib.utils.create_dictionary import Dictionary
 
 
+os.environ['TOKENIZERS_PARALLELISM'] = "false"
 def parse_args():
     parser = argparse.ArgumentParser(description="Med VQA")
     # cfg
@@ -62,7 +63,8 @@ if __name__ == '__main__':
 
     # d = Dictionary.load_from_file(data_dir + '/dictionary.pkl')
     # TODO: use BERT embedding to encode the dataset
-    d = Dictionary.load_from_model_name('bert-base-uncased')
+    # d = Dictionary.load_from_model_name('bert-base-uncased')
+    d = None #do not use dictionary, use BERTWordEmbedding to encode
     if cfg.DATASET.DATASET == "RAD":
         train_dataset = VQARADFeatureDataset('train', cfg, d, dataroot=data_dir)
         val_dataset = VQARADFeatureDataset('test', cfg, d, dataroot=data_dir)
@@ -73,8 +75,12 @@ if __name__ == '__main__':
         raise ValueError(f"Dataset {cfg.DATASET.DATASET} is not supported!")
     drop_last = False
     drop_last_val = False
+
+
     train_loader = DataLoader(train_dataset, cfg.TRAIN.BATCH_SIZE, shuffle=True, num_workers=2,drop_last=drop_last,
             pin_memory=True)
+
+
     val_loader = DataLoader(val_dataset, cfg.TEST.BATCH_SIZE, shuffle=True, num_workers=2,drop_last=drop_last_val,
             pin_memory=True)
 
@@ -90,7 +96,7 @@ if __name__ == '__main__':
         ckpt = './saved_models/type_classifier_slake.pth'
         pretrained_model = torch.load(ckpt, map_location='cuda:0')['model_state']
     else:
-        ckpt = 'saved_models/type_classifier_rad_bert_2023Jun02-140332.pth'
+        ckpt = 'saved_models/type_classifier_rad_biobert_2023Jun03-155924.pth'
         # TODO: load the retrained model
         # The best acc is 98.669623% at epoch 1
         qtype_ckpt = './saved_models/qtype_classifier.pth'
@@ -120,4 +126,4 @@ if __name__ == '__main__':
     else:
         model = BAN_Model(train_dataset, cfg, device)
         train(cfg, model, question_classify, train_loader, val_loader, train_dataset.num_close_candidates, args.device)
-        # TODO: make embeddings trainable
+
