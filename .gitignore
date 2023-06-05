@@ -32,7 +32,13 @@ MANIFEST
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
-
+# images 
+*.jpg
+output/qcr/*
+# checkpoints or cached
+*.pkl
+*.pth
+saved_models/
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
@@ -159,3 +165,8 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+*.jpg
+output/qcr/*
+*.pkl
+saved_models/*

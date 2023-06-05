@@ -8,60 +8,44 @@
 # Date:         2020/4/7
 #-------------------------------------------------------------------------------
 
+from typing import List
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import numpy as np
-from pytorch_pretrained_bert import BertTokenizer, BertModel, BertForMaskedLM
+from transformers import AutoModel, AutoTokenizer, AutoConfig
 
 
 class BERTWordEmbedding(nn.Module):
     """BERT Word Embedding
     """
 
-    def __init__(self, bert_model_name, dropout=0.5):
+    def __init__(self, bert_model_name, no_train=True, dropout=0.5, max_length=20):
         super(BERTWordEmbedding, self).__init__()
-        tokenizer = BertTokenizer.from_pretrained(bert_model_name)
-        model = BertModel.from_pretrained(bert_model_name)
-        self.tokenizer = tokenizer
-        self.model = model
-        self.vocab_size = model.embeddings.word_embeddings.weight.size()[0]
-        self.emb_dim = model.embeddings.word_embeddings.weight.size()[1]
+
+        self.tokenizer =  AutoTokenizer.from_pretrained(bert_model_name)
+        self.config = AutoConfig.from_pretrained(bert_model_name)
+        self.model = AutoModel.from_pretrained(bert_model_name, config=self.config)
+
+        self.max_length = max_length
+        self.output_layer = nn.Linear(self.config.hidden_size, 1024)
+        self.vocab_size = self.config.vocab_size
+        self.emb_dim = self.config.hidden_size
+        # no longer used but the pretrained checkpoint requires this
         self.emb = nn.Embedding(self.vocab_size + 1,
                                 self.emb_dim,
                                 padding_idx=self.find_padding_idx())
-        self.emb.weight.requires_grad = True # fixed
-        # TODO: debug, why dropout_ attribute is not accessed? 
-        self.dropout_ = nn.Dropout(p=dropout)
-        print('BERTWordEmbedding Attribute:', self.__dict__.keys())
-        # if cat:
-        #     self.emb_ = nn.Embedding(self.vocab_size+1, self.emb_dim,
-        #                              padding_idx=self.ntoken)
-        #     self.emb_.weight.requires_grad = False # fixed
+        if no_train:
+            for param in self.model.parameters():
+                param.requires_grad = False
+            print(f'BERT {bert_model_name} is fixed.')
+        else: print(f'BERT {bert_model_name} is trainable.')
 
     def find_padding_idx(self):
         pad_id = self.tokenizer.convert_tokens_to_ids(['[PAD]'])[0]
         return pad_id
 
-    def init_bert_embedding(self):
-        # only use 1st layer
-        embedding_mat = self.model.embeddings.word_embeddings.weight.data
-        self.emb.weight.data[:self.vocab_size] = embedding_mat
-
-    # for first layer (embedding layer) only
-    def is_embed_trainable(self):
-        return self.emb.weight.requires_grad
-
-    def train_embedding(self, trainable):
-        self.emb.weight.requires_grad = trainable
-
-    # for use of other layers
-    def train_all(self):
-        self.model.train()
-
-    def is_bert_trainable(self):
-        return self.model.requires_grad
-
+    # Archive
     def _prepare_last_4(self, x: str):
         """
         x: a string/question
@@ -77,6 +61,7 @@ class BERTWordEmbedding(nn.Module):
         token_embeddings = torch.stack(encoded_layers, dim=0)
         token_embeddings = torch.squeeze(token_embeddings, dim=1)
 
+
         # Stores the token vectors, with shape [22 x 3,072]
         token_vecs_sum = []
         # `token_embeddings` is a [12 x 768] tensor.
@@ -88,23 +73,55 @@ class BERTWordEmbedding(nn.Module):
             token_vecs_sum.append(sum_vec)
         return token_vecs_sum  # shape [seq_len, 768]
 
-    # TODO: check output shape: (batch_size, seq_len, emb_dim)
-    def forward(self, x: str):
-        self.train()
-        emb = self.emb(x)
-        # if self.cat:
-        #     emb = torch.cat((emb, self.emb_(x)), 2)
-        # emb = self.dropout_(emb)
-        return emb
 
-    # TODO: check output shape: (batch_size, seq_len, emb_dim)
-    def forward_sum4(self, x: str):
-        outs = []
-        for i, q in enumerate(x):
-            outs[i] = self._prepare_last_4(q)
-        outs = torch.stack(outs, dim=0)
-        return outs
+    def fully_forward(self, input_ids, token_type_ids=None, attention_mask=None, **kwargs):
+        # (batch_size, seq_len, 1024)
+        return self.output_layer(self.model(input_ids, token_type_ids, attention_mask))
 
+    def encode_and_cast_dim_forward(self, questions:List[str]):
+        # (batch_size, seq_len, 1024)
+        # 1024: HID_DIM
+        return  self.output_layer(self.encode_and_forward(questions)) # (batch_size, seq_len, 1024)  as type attention
+
+    def type_attn_forward(self, questions:List[str]):
+        # for TypeAttention
+        # (batch_size, 1024)
+        # 1024: HID_DIM
+        return torch.sum(self.encode_and_cast_dim_forward(questions), dim=1).squeeze()
+
+
+    def emb_forward(self, questions: List[str]):
+        # use first layer output as embedding
+        device = next(self.model.parameters()).device
+        tokenized = self.tokenizer.batch_encode_plus(questions,
+                                                  return_tensors="pt",
+                                                  max_length=self.max_length,
+                                                  truncation=True,
+                                                  padding='max_length')
+        tokenized = {k: v.to(device) for k, v in tokenized.items()}
+        # use BERT embedding layer (0th layer) output
+        embeddings = self.model.embeddings(tokenized['input_ids'],
+                                           tokenized['attention_mask'])
+        # (batch_size, seq_len, 768)
+
+        return embeddings
+
+    def encode_and_forward(self, questions:List[str]):
+        # use last layer output as embedding
+        # (batch_size, seq_len, 768)
+
+        device = next(self.model.parameters()).device
+        encode = self.tokenizer.batch_encode_plus(questions,
+                                                  return_tensors="pt",
+                                                  max_length=self.max_length,
+                                                  truncation=True,
+                                                  padding='max_length'
+                                                  )
+
+        encode = {k: v.to(device) for k, v in encode.items()}
+        # https://huggingface.co/docs/transformers/v4.29.1/en/main_classes/output#transformers.modeling_outputs.BaseModelOutputWithPoolingAndCrossAttentions
+        logit = self.model(**encode).last_hidden_state # (batch_size, seq_len, 768)
+        return logit
 
 class WordEmbedding(nn.Module):
     """Word Embedding
