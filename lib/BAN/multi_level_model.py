@@ -152,6 +152,7 @@ class BAN_Model(nn.Module):
 
         # path = os.path.join(self.cfg.DATASET.DATA_DIR, "glove6b_init_300d.npy")
         if cfg.TRAIN.ATTENTION.USE_ORIGINAL_TYPEATT:
+            print('use original type attention')
             self.typeatt = typeAttention(cfg.DATASET.EMBEDDER_MODEL,
                                      cfg.DATASET.EMB_DIM)
         else: self.typeatt = self.q_emb_model.type_attn_forward

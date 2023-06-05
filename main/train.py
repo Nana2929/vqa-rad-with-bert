@@ -237,6 +237,9 @@ def train(cfg,
                                                                       n_unique_close, device,
                                                                       logger)
             if eval_score > best_eval_score:
+                # clean all models
+                utils.keep_last_n_models(ckpt_path, n=0)
+                # save current best
                 best_eval_score = eval_score
                 best_epoch = epoch
                 # Save the best acc epoch
@@ -249,7 +252,7 @@ def train(cfg,
                                  close_score,
                                  ban_optimizer=ban_optimizer,
                                  bert_optimizer=bert_optimizer)
-            utils.keep_last_n_models(ckpt_path, n=1)
+
 
             logger.info('[Result] The best acc is {:.6f}% at epoch {}'.format(
                 best_eval_score, best_epoch))

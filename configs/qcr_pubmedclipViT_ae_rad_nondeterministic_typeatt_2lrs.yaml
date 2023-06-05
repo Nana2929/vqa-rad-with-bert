@@ -1,4 +1,4 @@
-NAME: 'QCR.CLIPRN50.AE.ROCO.VQARAD.200epoch'
+NAME: 'QCR.CLIPRN50.AE.ROCO.VQARAD'
 OUTPUT_DIR: './output/qcr_biobert_refinedimgs_typeatt_2lrs/pubmedclipViT32_ae/roco/VQARAD'
 CPU_MODE: False
 SEED: 88
@@ -15,9 +15,9 @@ LOSS:
   LOSS_TYPE: 'BCELogits'
 
 TRAIN:
-  BATCH_SIZE: 12
-  N_EPOCH: 100
-  NUM_WORKERS: 2
+  BATCH_SIZE: 16
+  N_EPOCH: 200
+  NUM_WORKERS: 4
   RESUME: False
   INPUT_SNAPSHOT: ""
   BERT_OPTIMIZER:
@@ -49,7 +49,7 @@ TRAIN:
     AE_ALPHA: 0.001
     MAML: False
     CLIP: True
-    CLIP_PATH: "../Medical-VQA/PubMedCLIP_ViT32.pth"
+    CLIP_PATH: "./PubMedCLIP_ViT32.pth"
     OTHER_MODEL: False
 
 
@@ -60,5 +60,5 @@ TRANSFORMS:
 TEST:
   BATCH_SIZE: 8
   NUM_WORKERS: 4
-  MODEL_FILE: "./output/qcr/pubmedclipViT_ae/roco/VQARAD/QCR.CLIPViT32.AE.ROCO.VQARAD.16batchsize.200epoch.withTFIDF.nondeterministic/62_best.pth"
+  MODEL_FILE: ""
   RESULT_DIR: "./results"

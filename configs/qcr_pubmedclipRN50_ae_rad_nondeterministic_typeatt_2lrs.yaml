@@ -1,4 +1,4 @@
-NAME: 'QCR.CLIPRN50.AE.ROCO.VQARAD.200epoch.nondeterministic.fixbert.looseTypeattn'
+NAME: 'QCR.CLIPRN50.AE.ROCO.VQARAD.nondeterministic'
 OUTPUT_DIR: './output/qcr_biobert_refinedimgs_typeatt_2lrs/pubmedclipRN50_ae/roco/VQARAD'
 CPU_MODE: False
 SEED: 88
@@ -15,7 +15,7 @@ LOSS:
   LOSS_TYPE: 'BCELogits'
 
 TRAIN:
-  BATCH_SIZE: 12
+  BATCH_SIZE: 16
   N_EPOCH: 200
   NUM_WORKERS: 2
   RESUME: False
@@ -50,7 +50,7 @@ TRAIN:
     AE_ALPHA: 0.001
     MAML: False
     CLIP: True
-    CLIP_PATH: "../Medical-VQA/PubMedCLIP_RN50.pth"
+    CLIP_PATH: "./PubMedCLIP_RN50.pth"
     CLIP_VISION_ENCODER: "RN50"
     OTHER_MODEL: False
 
